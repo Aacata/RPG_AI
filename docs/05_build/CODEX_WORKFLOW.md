@@ -24,13 +24,19 @@ That means:
 
 ## Required Reading Order Before Making Changes
 
-1. `docs/02_canon/PROJECT_BRAIN.md`
-2. `docs/02_canon/SYSTEM_MAP.md`
-3. `docs/02_canon/DATA_OWNERSHIP.md`
-4. `docs/02_canon/AI_BOUNDARY_RULES.md`
-5. Relevant files in `docs/03_systems/`
-6. Relevant files in `docs/04_contracts/`
-7. `docs/02_canon/BUILD_ORDER.md`
+1. `docs/05_build/SESSION_MANIFEST.md`
+2. `docs/02_canon/PROJECT_BRAIN.md`
+3. `docs/02_canon/SYSTEM_MAP.md`
+4. `docs/02_canon/DATA_OWNERSHIP.md`
+5. `docs/02_canon/AI_BOUNDARY_RULES.md`
+6. `docs/02_canon/BUILD_ORDER.md`
+7. Relevant files in `docs/03_systems/`
+8. Relevant files in `docs/04_contracts/`
+
+When relevant:
+
+- Read `docs/03_systems/RULES_SYSTEM.md` before rules-boundary or deterministic-resolution work.
+- Read `docs/03_systems/AI_STACK.md` and `docs/03_systems/VOICE_SYSTEM.md` before AI, voice, adapter, or observability work tied to those systems.
 
 ## How Visionary Ideas Move To Canon
 

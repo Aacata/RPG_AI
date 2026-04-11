@@ -4,13 +4,18 @@ All future agent sessions must operate from canon documentation before making ch
 
 ## Required Reading Order
 
-1. `docs/02_canon/PROJECT_BRAIN.md`
-2. `docs/02_canon/SYSTEM_MAP.md`
-3. `docs/02_canon/DATA_OWNERSHIP.md`
-4. `docs/02_canon/AI_BOUNDARY_RULES.md`
-5. Relevant system files in `docs/03_systems`
-6. Relevant contract files in `docs/04_contracts`
-7. `docs/05_build/CODEX_WORKFLOW.md`
+1. `docs/05_build/SESSION_MANIFEST.md`
+2. `docs/02_canon/PROJECT_BRAIN.md`
+3. `docs/02_canon/SYSTEM_MAP.md`
+4. `docs/02_canon/DATA_OWNERSHIP.md`
+5. `docs/02_canon/AI_BOUNDARY_RULES.md`
+6. `docs/02_canon/BUILD_ORDER.md`
+7. Relevant system files in `docs/03_systems`
+8. Relevant contract files in `docs/04_contracts`
+9. `docs/05_build/CODEX_WORKFLOW.md`
+
+If the task touches deterministic resolution, read `docs/03_systems/RULES_SYSTEM.md`.
+If the task touches AI or voice, also read `docs/03_systems/AI_STACK.md` and `docs/03_systems/VOICE_SYSTEM.md`.
 
 ## Non-Negotiable Rules
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, Mapping
+from typing import Mapping
 
 from src.core.contracts import (
     ActorSpecialization,
@@ -18,10 +18,19 @@ from src.core.contracts import (
     ValidationResult,
     ValidationStatus,
 )
+from src.core.ids import ActorId, LocationId, RegionId, SaveSlotId
 from src.core.state_root import SaveSlotMetaRecord, StateRoot
 from src.npc.actor_baseline import ActorRecord
-from src.world.world_state import LocationRecord, RegionRecord
+from src.world.world_state import LocationRecord, RegionRecord, WorldRootRecord
 
+
+MutableRecord = (
+    ActorRecord
+    | LocationRecord
+    | RegionRecord
+    | SaveSlotMetaRecord
+    | WorldRootRecord
+)
 
 ALLOWED_TARGET_KINDS = frozenset(TargetKind)
 ALLOWED_MUTATION_KINDS = frozenset(MutationKind)
@@ -233,6 +242,7 @@ def _validate_requested_mutation(
     state_root: StateRoot,
 ) -> list[str]:
     errors: list[str] = []
+
     if not is_legal_mutation_kind(requested_change.mutation_kind):
         return [f"Illegal mutation kind: {requested_change.mutation_kind!s}."]
 
@@ -245,8 +255,15 @@ def _validate_requested_mutation(
     if requested_change.target.record_id is None:
         return ["Non-create mutations require a target record_id."]
 
-    if not _target_exists(state_root, requested_change.target.kind, requested_change.target.record_id):
-        return [f"Target does not exist: {requested_change.target.kind.value}:{requested_change.target.record_id}."]
+    if not _target_exists(
+        state_root,
+        requested_change.target.kind,
+        requested_change.target.record_id,
+    ):
+        return [
+            f"Target does not exist: "
+            f"{requested_change.target.kind.value}:{requested_change.target.record_id}."
+        ]
 
     if requested_change.mutation_kind is MutationKind.SET_VALUE:
         errors.extend(_validate_set_value(requested_change))
@@ -274,29 +291,32 @@ def _validate_create_record(
         return argument_errors
 
     if requested_change.target.kind not in CREATEABLE_RECORD_KINDS:
-        return [f"create_record is not allowed for target kind {requested_change.target.kind.value}."]
+        return [
+            f"create_record is not allowed for target kind "
+            f"{requested_change.target.kind.value}."
+        ]
     if requested_change.target.record_id is not None:
         return ["create_record target selector must not include record_id."]
 
-    record_kind = requested_change.arguments.get("record_kind")
-    new_id = requested_change.arguments.get("new_id")
-    initial_slots = requested_change.arguments.get("initial_slots")
+    record_kind_obj = requested_change.arguments.get("record_kind")
+    new_id_obj = requested_change.arguments.get("new_id")
+    initial_slots_obj = requested_change.arguments.get("initial_slots")
 
-    if not isinstance(record_kind, str):
+    if not isinstance(record_kind_obj, str):
         return ["create_record record_kind must be a string."]
-    if record_kind not in {kind.value for kind in CREATEABLE_RECORD_KINDS}:
-        return [f"Illegal create_record record_kind: {record_kind!r}."]
-    if record_kind != requested_change.target.kind.value:
+    if record_kind_obj not in {kind.value for kind in CREATEABLE_RECORD_KINDS}:
+        return [f"Illegal create_record record_kind: {record_kind_obj!r}."]
+    if record_kind_obj != requested_change.target.kind.value:
         return ["create_record record_kind must match target kind."]
-    if not isinstance(new_id, str) or not new_id:
+    if not isinstance(new_id_obj, str) or not new_id_obj:
         return ["create_record new_id must be a non-empty string."]
-    if not isinstance(initial_slots, dict):
-        return ["create_record initial_slots must be a dictionary."]
-    if _target_exists(state_root, requested_change.target.kind, str(new_id)):
-        return [f"Record already exists for {record_kind}:{new_id}."]
+    if not isinstance(initial_slots_obj, Mapping):
+        return ["create_record initial_slots must be a mapping."]
+    if _target_exists(state_root, requested_change.target.kind, new_id_obj):
+        return [f"Record already exists for {record_kind_obj}:{new_id_obj}."]
 
     errors: list[str] = []
-    for slot_name, value in initial_slots.items():
+    for slot_name, value in initial_slots_obj.items():
         slot_error = _validate_slot_for_target_name(
             requested_change.target.kind,
             slot_name,
@@ -304,6 +324,7 @@ def _validate_create_record(
         if slot_error:
             errors.append(slot_error)
             continue
+
         errors.extend(
             _validate_initial_slot_value(
                 requested_change.target.kind,
@@ -325,12 +346,14 @@ def _validate_set_value(requested_change: RequestedMutation) -> list[str]:
 
     slot = _coerce_slot_key(requested_change.arguments.get("slot_key"))
     value = requested_change.arguments.get("value")
+
     if slot is None:
         return ["set_value requires a legal slot_key."]
     if not is_legal_slot_for_target(requested_change.target.kind, slot):
         return [f"Illegal slot {slot.value} for target kind {requested_change.target.kind.value}."]
     if slot not in VALUE_SLOTS:
         return [f"set_value is not legal for slot {slot.value}."]
+
     if slot is SlotKey.ACTOR_SPECIALIZATION:
         try:
             ActorSpecialization(value)
@@ -341,6 +364,7 @@ def _validate_set_value(requested_change: RequestedMutation) -> list[str]:
             AgencySource(value)
         except ValueError:
             return [f"Illegal agency_source value: {value!r}."]
+
     return []
 
 
@@ -357,6 +381,7 @@ def _validate_set_reference(
 
     slot = _coerce_slot_key(requested_change.arguments.get("slot_key"))
     ref_id = requested_change.arguments.get("ref_id")
+
     if slot is None:
         return ["set_reference requires a legal slot_key."]
     if not is_legal_slot_for_target(requested_change.target.kind, slot):
@@ -365,7 +390,8 @@ def _validate_set_reference(
         return [f"set_reference is not legal for slot {slot.value}."]
     if not isinstance(ref_id, str) or not ref_id:
         return ["set_reference requires ref_id as a non-empty string."]
-    return _validate_reference_target_exists(slot, str(ref_id), state_root)
+
+    return _validate_reference_target_exists(slot, ref_id, state_root)
 
 
 def _validate_add_reference(
@@ -381,6 +407,7 @@ def _validate_add_reference(
 
     slot = _coerce_slot_key(requested_change.arguments.get("slot_key"))
     ref_id = requested_change.arguments.get("ref_id")
+
     if slot is None:
         return ["add_reference requires a legal slot_key."]
     if not is_legal_slot_for_target(requested_change.target.kind, slot):
@@ -389,6 +416,7 @@ def _validate_add_reference(
         return [f"add_reference is not legal for slot {slot.value}."]
     if not isinstance(ref_id, str) or not ref_id:
         return ["add_reference requires ref_id as a non-empty string."]
+
     return []
 
 
@@ -405,6 +433,7 @@ def _validate_remove_reference(
 
     slot = _coerce_slot_key(requested_change.arguments.get("slot_key"))
     ref_id = requested_change.arguments.get("ref_id")
+
     if slot is None:
         return ["remove_reference requires a legal slot_key."]
     if not is_legal_slot_for_target(requested_change.target.kind, slot):
@@ -414,9 +443,15 @@ def _validate_remove_reference(
     if not isinstance(ref_id, str) or not ref_id:
         return ["remove_reference requires ref_id as a non-empty string."]
 
-    collection = _resolve_collection(state_root, requested_change.target.kind, requested_change.target.record_id, slot)
-    if str(ref_id) not in [str(item) for item in collection]:
+    collection = _resolve_collection(
+        state_root,
+        requested_change.target.kind,
+        requested_change.target.record_id,
+        slot,
+    )
+    if ref_id not in [str(item) for item in collection]:
         return [f"Reference {ref_id} is not present in {slot.value}."]
+
     return []
 
 
@@ -441,6 +476,7 @@ def _validate_set_status_flag(requested_change: RequestedMutation) -> list[str]:
         return [f"Illegal status flag: {flag_name!r}."]
     if not isinstance(flag_value, bool):
         return ["set_status_flag requires boolean flag_value."]
+
     return []
 
 
@@ -450,6 +486,7 @@ def _apply_single_mutation(state_root: StateRoot, mutation: ApprovedMutation) ->
         return
 
     record = _get_record(state_root, mutation.target.kind, mutation.target.record_id)
+
     if mutation.mutation_kind is MutationKind.SET_VALUE:
         slot = SlotKey(mutation.applied_arguments["slot_key"])
         setattr(record, slot.value, mutation.applied_arguments["value"])
@@ -458,69 +495,113 @@ def _apply_single_mutation(state_root: StateRoot, mutation: ApprovedMutation) ->
         setattr(record, slot.value, mutation.applied_arguments["ref_id"])
     elif mutation.mutation_kind is MutationKind.ADD_REFERENCE:
         slot = SlotKey(mutation.applied_arguments["slot_key"])
-        collection = _resolve_collection(state_root, mutation.target.kind, mutation.target.record_id, slot)
-        ref_id = mutation.applied_arguments["ref_id"]
-        if ref_id not in collection:
-            collection.append(ref_id)
+        collection = _resolve_collection(
+            state_root,
+            mutation.target.kind,
+            mutation.target.record_id,
+            slot,
+        )
+        ref_id_obj = mutation.applied_arguments["ref_id"]
+        if not isinstance(ref_id_obj, str):
+            raise ValueError("add_reference ref_id must be a string.")
+        if ref_id_obj not in collection:
+            collection.append(ref_id_obj)
     elif mutation.mutation_kind is MutationKind.REMOVE_REFERENCE:
         slot = SlotKey(mutation.applied_arguments["slot_key"])
-        collection = _resolve_collection(state_root, mutation.target.kind, mutation.target.record_id, slot)
-        ref_id = mutation.applied_arguments["ref_id"]
-        collection[:] = [item for item in collection if str(item) != str(ref_id)]
+        collection = _resolve_collection(
+            state_root,
+            mutation.target.kind,
+            mutation.target.record_id,
+            slot,
+        )
+        ref_id_obj = mutation.applied_arguments["ref_id"]
+        if not isinstance(ref_id_obj, str):
+            raise ValueError("remove_reference ref_id must be a string.")
+        collection[:] = [item for item in collection if str(item) != ref_id_obj]
     elif mutation.mutation_kind is MutationKind.SET_STATUS_FLAG:
         _apply_status_flag(record, mutation.applied_arguments)
 
 
 def _apply_create_record(state_root: StateRoot, mutation: ApprovedMutation) -> None:
     target_kind = mutation.target.kind
-    new_id = str(mutation.applied_arguments["new_id"])
-    initial_slots = mutation.applied_arguments.get("initial_slots", {})
+    raw_new_id = mutation.applied_arguments["new_id"]
+    if not isinstance(raw_new_id, str):
+        raise ValueError("new_id must be a string.")
+
+    typed_new_id = _coerce_new_id(target_kind, raw_new_id)
+
+    initial_slots_obj = mutation.applied_arguments.get("initial_slots", {})
+    if not isinstance(initial_slots_obj, Mapping):
+        raise ValueError("initial_slots must be a mapping.")
 
     if target_kind is TargetKind.ACTOR:
-        record = ActorRecord(actor_id=new_id)  # type: ignore[arg-type]
-        state_root.actors[new_id] = record
+        record = ActorRecord(actor_id=typed_new_id)
+        state_root.actors[str(typed_new_id)] = record
     elif target_kind is TargetKind.LOCATION:
-        record = LocationRecord(location_id=new_id)  # type: ignore[arg-type]
-        state_root.locations[new_id] = record
+        record = LocationRecord(location_id=typed_new_id)
+        state_root.locations[str(typed_new_id)] = record
     elif target_kind is TargetKind.REGION:
-        record = RegionRecord(region_id=new_id)  # type: ignore[arg-type]
-        state_root.regions[new_id] = record
+        record = RegionRecord(region_id=typed_new_id)
+        state_root.regions[str(typed_new_id)] = record
     elif target_kind is TargetKind.SAVE_SLOT_META:
-        record = SaveSlotMetaRecord(save_slot_id=new_id)  # type: ignore[arg-type]
-        state_root.save_slots[new_id] = record
+        record = SaveSlotMetaRecord(save_slot_id=typed_new_id)
+        state_root.save_slots[str(typed_new_id)] = record
     else:
         raise ValueError(f"Unsupported create_record target kind: {target_kind.value}.")
 
-    _apply_initial_slots(record, initial_slots)
+    _apply_initial_slots(record, initial_slots_obj)
 
 
-def _apply_initial_slots(record: Any, initial_slots: dict[str, Any]) -> None:
+def _apply_initial_slots(
+    record: MutableRecord,
+    initial_slots: Mapping[str, object],
+) -> None:
     for slot_name, value in initial_slots.items():
         slot = SlotKey(slot_name)
         if slot is SlotKey.STATUS_FLAG:
-            _apply_status_flag(
-                record,
-                {
-                    "slot_key": slot.value,
-                    "flag_name": value["flag_name"],
-                    "flag_value": value["flag_value"],
-                },
-            )
+            if not isinstance(value, Mapping):
+                raise ValueError("Initial status_flag value must be a mapping.")
+            _apply_status_flag(record, value)
             continue
         setattr(record, slot.value, value)
 
 
-def _apply_status_flag(record: Any, arguments: dict[str, Any]) -> None:
-    flag = StatusFlag(arguments["flag_name"])
-    enabled = arguments["flag_value"]
-    if enabled:
+def _apply_status_flag(
+    record: MutableRecord,
+    arguments: Mapping[str, object],
+) -> None:
+    flag_name = arguments["flag_name"]
+    flag_value = arguments["flag_value"]
+
+    if not isinstance(flag_name, str):
+        raise ValueError("flag_name must be a string.")
+    if not isinstance(flag_value, bool):
+        raise ValueError("flag_value must be a boolean.")
+
+    flag = StatusFlag(flag_name)
+    if flag_value:
         record.status_flags.add(flag)
     else:
         record.status_flags.discard(flag)
 
 
+def _coerce_new_id(
+    target_kind: TargetKind,
+    raw_id: str,
+) -> ActorId | LocationId | RegionId | SaveSlotId:
+    if target_kind is TargetKind.ACTOR:
+        return ActorId(raw_id)
+    if target_kind is TargetKind.LOCATION:
+        return LocationId(raw_id)
+    if target_kind is TargetKind.REGION:
+        return RegionId(raw_id)
+    if target_kind is TargetKind.SAVE_SLOT_META:
+        return SaveSlotId(raw_id)
+    raise ValueError(f"Unsupported target kind for new_id coercion: {target_kind.value}.")
+
+
 def _validate_argument_keys(
-    arguments: Mapping[str, Any],
+    arguments: Mapping[str, object],
     required_keys: frozenset[str],
 ) -> list[str]:
     provided_keys = frozenset(arguments.keys())
@@ -539,14 +620,14 @@ def _validate_argument_keys(
     return errors
 
 
-def _coerce_slot_key(value: Any) -> SlotKey | None:
+def _coerce_slot_key(value: object) -> SlotKey | None:
     try:
         return SlotKey(value)
     except ValueError:
         return None
 
 
-def _validate_slot_for_target_name(target_kind: TargetKind, slot_name: Any) -> str | None:
+def _validate_slot_for_target_name(target_kind: TargetKind, slot_name: object) -> str | None:
     try:
         slot = SlotKey(slot_name)
     except ValueError:
@@ -559,7 +640,7 @@ def _validate_slot_for_target_name(target_kind: TargetKind, slot_name: Any) -> s
 def _validate_initial_slot_value(
     target_kind: TargetKind,
     slot: SlotKey,
-    value: Any,
+    value: object,
     state_root: StateRoot,
 ) -> list[str]:
     if not is_legal_slot_for_target(target_kind, slot):
@@ -569,17 +650,18 @@ def _validate_initial_slot_value(
         return [f"Initial slot {slot.value} is not supported for create_record in Phase 1."]
 
     if slot is SlotKey.STATUS_FLAG:
-        if not isinstance(value, dict):
-            return ["Initial status_flag value must be a dictionary."]
+        if not isinstance(value, Mapping):
+            return ["Initial status_flag value must be a mapping."]
         status_errors = _validate_argument_keys(
             value,
             required_keys=frozenset({"flag_name", "flag_value"}),
         )
         if status_errors:
             return [f"Initial status_flag is malformed. {error}" for error in status_errors]
+
         flag_name = value.get("flag_name")
         flag_value = value.get("flag_value")
-        if not is_legal_status_flag(flag_name):
+        if not is_legal_status_flag(flag_name if isinstance(flag_name, str) else ""):
             return [f"Illegal initial status flag: {flag_name!r}."]
         if not isinstance(flag_value, bool):
             return ["Initial status_flag requires boolean flag_value."]
@@ -606,7 +688,11 @@ def _validate_initial_slot_value(
     return [f"Initial slot {slot.value} is not supported for create_record in Phase 1."]
 
 
-def _target_exists(state_root: StateRoot, target_kind: TargetKind, record_id: str | None) -> bool:
+def _target_exists(
+    state_root: StateRoot,
+    target_kind: TargetKind,
+    record_id: str | None,
+) -> bool:
     if target_kind is TargetKind.WORLD_ROOT:
         return record_id in (None, "world_root")
     if record_id is None:
@@ -615,7 +701,10 @@ def _target_exists(state_root: StateRoot, target_kind: TargetKind, record_id: st
     return str(record_id) in store
 
 
-def _store_for_target_kind(state_root: StateRoot, target_kind: TargetKind) -> dict[str, Any]:
+def _store_for_target_kind(
+    state_root: StateRoot,
+    target_kind: TargetKind,
+) -> dict[str, object]:
     if target_kind is TargetKind.ACTOR:
         return state_root.actors
     if target_kind is TargetKind.LOCATION:
@@ -627,13 +716,23 @@ def _store_for_target_kind(state_root: StateRoot, target_kind: TargetKind) -> di
     raise ValueError(f"Target kind {target_kind.value} does not map to a dictionary store.")
 
 
-def _get_record(state_root: StateRoot, target_kind: TargetKind, record_id: str | None) -> Any:
+def _get_record(
+    state_root: StateRoot,
+    target_kind: TargetKind,
+    record_id: str | None,
+) -> MutableRecord:
     if target_kind is TargetKind.WORLD_ROOT:
         return state_root.world_root
     if record_id is None:
         raise ValueError("record_id is required for non-world_root targets.")
     store = _store_for_target_kind(state_root, target_kind)
-    return store[str(record_id)]
+    record = store[str(record_id)]
+    if not isinstance(
+        record,
+        (ActorRecord, LocationRecord, RegionRecord, SaveSlotMetaRecord, WorldRootRecord),
+    ):
+        raise TypeError("Resolved record has unsupported type.")
+    return record
 
 
 def _resolve_collection(
@@ -641,7 +740,7 @@ def _resolve_collection(
     target_kind: TargetKind,
     record_id: str | None,
     slot: SlotKey,
-) -> list[Any]:
+) -> list[object]:
     record = _get_record(state_root, target_kind, record_id)
     if slot is SlotKey.ACTIVE_EVENT_REF:
         return record.active_event_refs
