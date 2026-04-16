@@ -77,7 +77,13 @@ ALLOWED_SLOT_MATRIX: dict[TargetKind, frozenset[SlotKey]] = {
             SlotKey.LOCATION_TYPE,
         }
     ),
-    TargetKind.REGION: frozenset({SlotKey.DISPLAY_NAME, SlotKey.REGION_PARENT_REF}),
+    TargetKind.REGION: frozenset(
+        {
+            SlotKey.DISPLAY_NAME,
+            SlotKey.WORLD_SPACE_REF,
+            SlotKey.REGION_PARENT_REF,
+        }
+    ),
     TargetKind.SAVE_SLOT_META: frozenset(
         {
             SlotKey.SAVE_LABEL,
@@ -115,6 +121,7 @@ SINGLE_REFERENCE_SLOTS = frozenset(
         SlotKey.SCHEDULE_REF,
         SlotKey.INVENTORY_REF,
         SlotKey.REGION_REF,
+        SlotKey.WORLD_SPACE_REF,
         SlotKey.REGION_PARENT_REF,
         SlotKey.PLAYER_ACTOR_REF,
     }
@@ -760,6 +767,8 @@ def _validate_reference_target_exists(
         return [f"Unknown location reference: {ref_id}."]
     if slot is SlotKey.REGION_REF and ref_id not in state_root.regions:
         return [f"Unknown region reference: {ref_id}."]
+    if slot is SlotKey.WORLD_SPACE_REF and ref_id not in state_root.world_spaces:
+        return [f"Unknown world space reference: {ref_id}."]
     if slot is SlotKey.REGION_PARENT_REF and ref_id not in state_root.regions:
         return [f"Unknown region parent reference: {ref_id}."]
     if slot is SlotKey.PLAYER_ACTOR_REF and ref_id not in state_root.actors:

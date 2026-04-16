@@ -4,7 +4,13 @@ from dataclasses import dataclass, field
 
 from src.core.ids import ActorId, SaveSlotId
 from src.npc.actor_baseline import ActorRecord
-from src.world.world_state import LocationRecord, RegionRecord, WorldRootRecord
+from src.world.world_state import (
+    LocationRecord,
+    MapDiscoveryEntry,
+    RegionRecord,
+    WorldRootRecord,
+    WorldSpaceRecord,
+)
 
 
 @dataclass
@@ -20,7 +26,9 @@ class SaveSlotMetaRecord:
 @dataclass
 class StateRoot:
     world_root: WorldRootRecord = field(default_factory=WorldRootRecord)
+    world_spaces: dict[str, WorldSpaceRecord] = field(default_factory=dict)
     actors: dict[str, ActorRecord] = field(default_factory=dict)
     locations: dict[str, LocationRecord] = field(default_factory=dict)
+    player_map_discovery: dict[str, MapDiscoveryEntry] = field(default_factory=dict)
     regions: dict[str, RegionRecord] = field(default_factory=dict)
     save_slots: dict[str, SaveSlotMetaRecord] = field(default_factory=dict)

@@ -7,6 +7,7 @@ ActorId = NewType("ActorId", str)
 EventId = NewType("EventId", str)
 LocationId = NewType("LocationId", str)
 RegionId = NewType("RegionId", str)
+WorldSpaceId = NewType("WorldSpaceId", str)
 FactionId = NewType("FactionId", str)
 SaveSlotId = NewType("SaveSlotId", str)
 
@@ -31,6 +32,10 @@ def make_location_id(raw_value: str) -> LocationId:
 
 def make_region_id(raw_value: str) -> RegionId:
     return RegionId(_build_id("region", raw_value))
+
+
+def make_world_space_id(raw_value: str) -> WorldSpaceId:
+    return WorldSpaceId(_build_id("worldspace", raw_value))
 
 
 def make_faction_id(raw_value: str) -> FactionId:

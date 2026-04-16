@@ -20,6 +20,7 @@ from src.core.ids import (
     make_location_id,
     make_region_id,
     make_save_slot_id,
+    make_world_space_id,
 )
 from src.core.runtime import process_proposed_change
 from src.core.state_root import SaveSlotMetaRecord, StateRoot
@@ -32,7 +33,19 @@ from src.core.transition_validation import (
     validate_proposed_change,
 )
 from src.npc.actor_baseline import ActorRecord
-from src.world.world_state import LocationRecord, RegionRecord, WorldRootRecord
+from src.world.map_discovery_updates import (
+    mark_player_location_visited,
+    reveal_player_location,
+    reveal_player_location_name,
+)
+from src.world.world_state import (
+    LocationRecord,
+    MapDiscoveryEntry,
+    RegionRecord,
+    WorldRootRecord,
+    WorldSpaceRecord,
+    build_player_location_discovery_read_model,
+)
 
 
 class Phase1CoreSliceTests(unittest.TestCase):
@@ -572,6 +585,78 @@ class Phase1CoreSliceTests(unittest.TestCase):
             any("Unknown region parent reference" in message for message in result.diagnostics)
         )
 
+    def test_processes_valid_region_world_space_ref_mutation(self) -> None:
+        world_space_id = make_world_space_id("primary")
+        self.state_root.world_spaces[str(world_space_id)] = WorldSpaceRecord(
+            world_space_id=world_space_id,
+            sea_level_z=0.0,
+        )
+
+        proposed_change = self.make_proposed_change(
+            "proposal_map_region_world_space",
+            (
+                RequestedMutation(
+                    change_id="change_map_region_world_space",
+                    mutation_kind=MutationKind.SET_REFERENCE,
+                    target=TargetSelector(TargetKind.REGION, str(self.region_id)),
+                    arguments={
+                        "slot_key": SlotKey.WORLD_SPACE_REF.value,
+                        "ref_id": str(world_space_id),
+                    },
+                ),
+            ),
+            target_refs=(TargetSelector(TargetKind.REGION, str(self.region_id)),),
+        )
+
+        validation = validate_proposed_change(proposed_change, self.state_root)
+        self.assertEqual(validation.status, ValidationStatus.ACCEPTED)
+
+        updated_state, events, _ = process_proposed_change(self.state_root, proposed_change)
+        self.assertEqual(
+            updated_state.regions[str(self.region_id)].world_space_ref,
+            str(world_space_id),
+        )
+        self.assertEqual(len(events), 1)
+
+    def test_rejects_unknown_region_world_space_ref_mutation(self) -> None:
+        unknown_world_space_id = make_world_space_id("missing_world_space")
+        proposed_change = self.make_proposed_change(
+            "proposal_map_bad_region_world_space",
+            (
+                RequestedMutation(
+                    change_id="change_map_bad_region_world_space",
+                    mutation_kind=MutationKind.SET_REFERENCE,
+                    target=TargetSelector(TargetKind.REGION, str(self.region_id)),
+                    arguments={
+                        "slot_key": SlotKey.WORLD_SPACE_REF.value,
+                        "ref_id": str(unknown_world_space_id),
+                    },
+                ),
+            ),
+            target_refs=(TargetSelector(TargetKind.REGION, str(self.region_id)),),
+        )
+
+        result = validate_proposed_change(proposed_change, self.state_root)
+        self.assertEqual(result.status, ValidationStatus.REJECTED)
+        self.assertEqual(result.approved_mutations, ())
+        self.assertTrue(
+            any("Unknown world space reference" in message for message in result.diagnostics)
+        )
+
+        original_world_space_ref = self.state_root.regions[str(self.region_id)].world_space_ref
+        updated_state, events, diagnostics = process_proposed_change(
+            self.state_root,
+            proposed_change,
+        )
+        self.assertEqual(
+            updated_state.regions[str(self.region_id)].world_space_ref,
+            original_world_space_ref,
+        )
+        self.assertEqual(events, ())
+        self.assertTrue(
+            any("Unknown world space reference" in message for message in diagnostics)
+        )
+
     def test_rejects_illegal_phase2_target_slot_combinations(self) -> None:
         cases = (
             (
@@ -617,6 +702,230 @@ class Phase1CoreSliceTests(unittest.TestCase):
                 result = validate_proposed_change(proposed_change, self.state_root)
                 self.assertEqual(result.status, ValidationStatus.REJECTED)
                 self.assertTrue(any("Illegal slot" in message for message in result.diagnostics))
+
+    def test_supports_map_mvp_record_fields_with_world_space_and_hidden_location(self) -> None:
+        world_space_id = make_world_space_id("primary")
+        hidden_location_id = make_location_id("hidden_shrine")
+        region = RegionRecord(
+            region_id=self.region_id,
+            world_space_ref=world_space_id,
+            display_name="Heartlands",
+        )
+        hidden_location = LocationRecord(
+            location_id=hidden_location_id,
+            display_name="Sunken Shrine",
+            region_ref=self.region_id,
+            location_type="ruin",
+            x=125.5,
+            y=340.25,
+            z=-2.0,
+            biome="swamp",
+            is_hidden_by_default=True,
+        )
+
+        self.state_root.world_spaces[str(world_space_id)] = WorldSpaceRecord(
+            world_space_id=world_space_id,
+            sea_level_z=0.0,
+        )
+        self.state_root.regions[str(self.region_id)] = region
+        self.state_root.locations[str(hidden_location_id)] = hidden_location
+
+        self.assertIn(str(world_space_id), self.state_root.world_spaces)
+        self.assertEqual(
+            self.state_root.world_spaces[str(world_space_id)].sea_level_z,
+            0.0,
+        )
+        self.assertEqual(
+            self.state_root.regions[str(self.region_id)].world_space_ref,
+            world_space_id,
+        )
+        self.assertEqual(hidden_location.x, 125.5)
+        self.assertEqual(hidden_location.y, 340.25)
+        self.assertEqual(hidden_location.z, -2.0)
+        self.assertEqual(hidden_location.biome, "swamp")
+        self.assertTrue(hidden_location.is_hidden_by_default)
+        self.assertEqual(
+            self.state_root.actors[str(self.player_id)].location_ref,
+            self.location_id,
+        )
+
+    def test_stores_player_map_discovery_entry_for_canonical_location(self) -> None:
+        discovery_entry = MapDiscoveryEntry(
+            location_ref=self.location_id,
+            is_revealed=True,
+            is_name_revealed=False,
+            is_marker_visible=False,
+            is_visited=False,
+        )
+        self.state_root.player_map_discovery[str(self.location_id)] = discovery_entry
+
+        stored_entry = self.state_root.player_map_discovery[str(self.location_id)]
+        canonical_location = self.state_root.locations[str(self.location_id)]
+
+        self.assertEqual(stored_entry.location_ref, self.location_id)
+        self.assertTrue(stored_entry.is_revealed)
+        self.assertFalse(stored_entry.is_name_revealed)
+        self.assertFalse(stored_entry.is_marker_visible)
+        self.assertFalse(stored_entry.is_visited)
+        self.assertEqual(canonical_location.display_name, "Town")
+        self.assertEqual(canonical_location.location_type, "settlement")
+        self.assertFalse(hasattr(stored_entry, "display_name"))
+        self.assertFalse(hasattr(stored_entry, "location_type"))
+
+    def test_builds_player_location_discovery_read_model_with_and_without_entry(self) -> None:
+        hidden_location_id = make_location_id("hidden_archive")
+        self.state_root.locations[str(hidden_location_id)] = LocationRecord(
+            location_id=hidden_location_id,
+            display_name="Hidden Archive",
+            location_type="ruin",
+            is_hidden_by_default=True,
+        )
+
+        no_discovery_entry_view = build_player_location_discovery_read_model(
+            location_ref=hidden_location_id,
+            canonical_location=self.state_root.locations[str(hidden_location_id)],
+            discovery_entry=self.state_root.player_map_discovery.get(str(hidden_location_id)),
+        )
+        self.assertTrue(no_discovery_entry_view["canonically_present"])
+        self.assertTrue(no_discovery_entry_view["hidden_by_default"])
+        self.assertFalse(no_discovery_entry_view["is_revealed"])
+        self.assertFalse(no_discovery_entry_view["is_name_revealed"])
+        self.assertFalse(no_discovery_entry_view["is_marker_visible"])
+        self.assertFalse(no_discovery_entry_view["is_visited"])
+        self.assertNotIn("display_name", no_discovery_entry_view)
+
+        self.state_root.player_map_discovery[str(hidden_location_id)] = MapDiscoveryEntry(
+            location_ref=hidden_location_id,
+            is_revealed=True,
+            is_name_revealed=True,
+            is_marker_visible=True,
+            is_visited=False,
+        )
+
+        with_discovery_entry_view = build_player_location_discovery_read_model(
+            location_ref=hidden_location_id,
+            canonical_location=self.state_root.locations[str(hidden_location_id)],
+            discovery_entry=self.state_root.player_map_discovery[str(hidden_location_id)],
+        )
+        self.assertTrue(with_discovery_entry_view["canonically_present"])
+        self.assertTrue(with_discovery_entry_view["hidden_by_default"])
+        self.assertTrue(with_discovery_entry_view["is_revealed"])
+        self.assertTrue(with_discovery_entry_view["is_name_revealed"])
+        self.assertTrue(with_discovery_entry_view["is_marker_visible"])
+        self.assertFalse(with_discovery_entry_view["is_visited"])
+        self.assertNotIn("display_name", with_discovery_entry_view)
+
+    def test_reveal_player_location_creates_discovery_entry_and_preserves_canonical_location(self) -> None:
+        hidden_location_id = make_location_id("hidden_vault")
+        self.state_root.locations[str(hidden_location_id)] = LocationRecord(
+            location_id=hidden_location_id,
+            display_name="Hidden Vault",
+            location_type="ruin",
+            is_hidden_by_default=True,
+        )
+
+        reveal_player_location(self.state_root, hidden_location_id)
+
+        discovery_entry = self.state_root.player_map_discovery[str(hidden_location_id)]
+        canonical_location = self.state_root.locations[str(hidden_location_id)]
+        self.assertEqual(discovery_entry.location_ref, hidden_location_id)
+        self.assertTrue(discovery_entry.is_revealed)
+        self.assertFalse(discovery_entry.is_name_revealed)
+        self.assertFalse(discovery_entry.is_marker_visible)
+        self.assertFalse(discovery_entry.is_visited)
+        self.assertEqual(canonical_location.display_name, "Hidden Vault")
+        self.assertEqual(canonical_location.location_type, "ruin")
+        self.assertTrue(canonical_location.is_hidden_by_default)
+
+    def test_reveal_player_location_rejects_unknown_location_ref(self) -> None:
+        unknown_location_id = make_location_id("missing_location")
+
+        with self.assertRaises(ValueError):
+            reveal_player_location(self.state_root, unknown_location_id)
+
+        self.assertEqual(self.state_root.player_map_discovery, {})
+
+    def test_reveal_player_location_name_creates_or_updates_name_reveal_and_preserves_other_fields(self) -> None:
+        hidden_location_id = make_location_id("named_hidden_vault")
+        self.state_root.locations[str(hidden_location_id)] = LocationRecord(
+            location_id=hidden_location_id,
+            display_name="Named Hidden Vault",
+            location_type="ruin",
+            is_hidden_by_default=True,
+        )
+
+        reveal_player_location_name(self.state_root, hidden_location_id)
+
+        created_entry = self.state_root.player_map_discovery[str(hidden_location_id)]
+        canonical_location = self.state_root.locations[str(hidden_location_id)]
+        self.assertEqual(created_entry.location_ref, hidden_location_id)
+        self.assertTrue(created_entry.is_revealed)
+        self.assertTrue(created_entry.is_name_revealed)
+        self.assertFalse(created_entry.is_marker_visible)
+        self.assertFalse(created_entry.is_visited)
+        self.assertEqual(canonical_location.display_name, "Named Hidden Vault")
+        self.assertEqual(canonical_location.location_type, "ruin")
+        self.assertTrue(canonical_location.is_hidden_by_default)
+
+        self.state_root.player_map_discovery[str(hidden_location_id)] = MapDiscoveryEntry(
+            location_ref=hidden_location_id,
+            is_revealed=False,
+            is_name_revealed=False,
+            is_marker_visible=True,
+            is_visited=True,
+        )
+
+        reveal_player_location_name(self.state_root, hidden_location_id)
+
+        updated_entry = self.state_root.player_map_discovery[str(hidden_location_id)]
+        self.assertTrue(updated_entry.is_revealed)
+        self.assertTrue(updated_entry.is_name_revealed)
+        self.assertTrue(updated_entry.is_marker_visible)
+        self.assertTrue(updated_entry.is_visited)
+
+    def test_reveal_player_location_name_rejects_unknown_location_ref(self) -> None:
+        unknown_location_id = make_location_id("missing_named_location")
+
+        with self.assertRaises(ValueError):
+            reveal_player_location_name(self.state_root, unknown_location_id)
+
+        self.assertEqual(self.state_root.player_map_discovery, {})
+
+    def test_mark_player_location_visited_sets_visit_reveal_and_preserves_marker_visibility(self) -> None:
+        hidden_location_id = make_location_id("visited_hidden_vault")
+        self.state_root.locations[str(hidden_location_id)] = LocationRecord(
+            location_id=hidden_location_id,
+            display_name="Visited Hidden Vault",
+            location_type="ruin",
+            is_hidden_by_default=True,
+        )
+        self.state_root.player_map_discovery[str(hidden_location_id)] = MapDiscoveryEntry(
+            location_ref=hidden_location_id,
+            is_revealed=False,
+            is_name_revealed=False,
+            is_marker_visible=True,
+            is_visited=False,
+        )
+
+        mark_player_location_visited(self.state_root, hidden_location_id)
+
+        discovery_entry = self.state_root.player_map_discovery[str(hidden_location_id)]
+        canonical_location = self.state_root.locations[str(hidden_location_id)]
+        self.assertTrue(discovery_entry.is_revealed)
+        self.assertTrue(discovery_entry.is_name_revealed)
+        self.assertTrue(discovery_entry.is_visited)
+        self.assertTrue(discovery_entry.is_marker_visible)
+        self.assertEqual(canonical_location.display_name, "Visited Hidden Vault")
+        self.assertEqual(canonical_location.location_type, "ruin")
+        self.assertTrue(canonical_location.is_hidden_by_default)
+
+    def test_mark_player_location_visited_rejects_unknown_location_ref(self) -> None:
+        unknown_location_id = make_location_id("missing_visited_location")
+
+        with self.assertRaises(ValueError):
+            mark_player_location_visited(self.state_root, unknown_location_id)
+
+        self.assertEqual(self.state_root.player_map_discovery, {})
 
 
 if __name__ == "__main__":

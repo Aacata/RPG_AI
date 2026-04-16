@@ -34,6 +34,7 @@ class SlotKey(str, Enum):
     ACTIVE_EVENT_REF = "active_event_ref"
     ACTIVE_FACTION_REF = "active_faction_ref"
     REGION_REF = "region_ref"
+    WORLD_SPACE_REF = "world_space_ref"
     REGION_PARENT_REF = "region_parent_ref"
     LOCATION_TYPE = "location_type"
     SAVE_LABEL = "save_label"
