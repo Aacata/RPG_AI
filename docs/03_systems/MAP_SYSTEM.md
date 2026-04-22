@@ -22,6 +22,14 @@ Cross-reference:
 - `docs/04_contracts/WORLD_STATE_SCHEMA.md`
 - `docs/04_contracts/KNOWLEDGE_MODEL.md`
 
+Status note:
+
+- Map MVP records exist in code.
+- Narrow mutation and validation support exists for `RegionRecord.world_space_ref`.
+- Player map discovery storage, a read-model helper, and helper-level update functions exist in code.
+- Discovery helpers are not the same thing as full discovery mechanics and are not yet integrated into the full proposed-change or authoritative-event pipeline.
+- `LocationRecord` spatial fields exist in records, but full mutation-surface rollout for all of them is not implemented.
+
 ## 2. Core architectural separation
 
 ### Canonical spatial map

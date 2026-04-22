@@ -70,6 +70,7 @@ Stop and escalate when:
 - Do not merge layers for convenience.
 - Do not treat summaries, dashboards, or view models as truth.
 - Do not smuggle architecture changes into refactors.
+- Do not treat the presence of a record, schema, field, or helper as proof that the full subsystem is implemented.
 - Prefer TODO notes over unsupported certainty.
 
 ## How To Handle Uncertainty

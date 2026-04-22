@@ -19,6 +19,14 @@ Cross-reference:
 - `docs/04_contracts/KNOWLEDGE_MODEL.md`
 - `docs/02_canon/DATA_OWNERSHIP.md`
 
+Status note:
+
+- `WorldSpaceRecord`, `RegionRecord`, and `LocationRecord` exist in code.
+- `LocationRecord` currently carries `x`, `y`, `z`, `biome`, and `is_hidden_by_default`.
+- Narrow validated mutation support currently exists for `RegionRecord.world_space_ref`.
+- Full mutation-surface rollout for all `LocationRecord` spatial fields is not implemented.
+- Actor spatial linkage remains `location_ref` only.
+
 ## 2. Scope of this contract
 
 This contract covers only the minimum canonical spatial data needed now for:

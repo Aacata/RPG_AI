@@ -10,6 +10,7 @@ from src.core.ids import ActorId, EventId
 class TargetKind(str, Enum):
     ACTOR = "actor"
     WORLD_ROOT = "world_root"
+    WORLD_SPACE = "world_space"
     LOCATION = "location"
     REGION = "region"
     SAVE_SLOT_META = "save_slot_meta"
@@ -33,6 +34,7 @@ class SlotKey(str, Enum):
     CALENDAR_REF = "calendar_ref"
     ACTIVE_EVENT_REF = "active_event_ref"
     ACTIVE_FACTION_REF = "active_faction_ref"
+    SEA_LEVEL_Z = "sea_level_z"
     REGION_REF = "region_ref"
     WORLD_SPACE_REF = "world_space_ref"
     REGION_PARENT_REF = "region_parent_ref"

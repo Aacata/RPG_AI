@@ -11,6 +11,13 @@ This contract sits between:
 - broader knowledge boundaries in `KNOWLEDGE_MODEL.md`
 - future derived 2D map presentation described by `MAP_SYSTEM.md`
 
+Status note:
+
+- `MapDiscoveryEntry` and `StateRoot.player_map_discovery` exist in code.
+- A read-model helper and helper-level update functions for reveal, name reveal, and visited state exist in code.
+- These helpers are not yet full discovery mechanics.
+- These helpers are not yet integrated into the full proposed-change or authoritative-event pipeline.
+
 ## 2. Scope of this contract
 
 This contract covers only the minimum needed for:

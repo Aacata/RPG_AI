@@ -27,6 +27,13 @@ reassigning truth ownership.
 - When in doubt, write a TODO instead of guessing.
 - When docs and code conflict, stop and surface the conflict.
 
+## Operational Reading Rules
+
+- A record, schema, or field existing does not mean the subsystem semantics are implemented.
+- A helper existing does not mean it is integrated into the full proposed-change or authoritative-event pipeline.
+- Current repo progress includes narrow slices. Do not misread a narrow slice as full subsystem completion.
+- Future sessions must distinguish record existence, validated mutation support, helper-level behavior, and event-integrated behavior.
+
 ---
 
 ## Canonical Architecture At A Glance
@@ -129,13 +136,15 @@ Difficulty categories (AI proposes, backend translates to number):
 
 Current implemented foundation:
 
-- Phase 1 minimal canonical core complete
-- Phase 1 hardening pass complete
-- Phase 2 basic world and actor state expansion complete
+- Phase 1 minimal canonical core implemented and tested
+- Phase 1 hardening pass implemented and tested
+- Phase 2 basic world and actor state slice implemented and tested
+- Phase 3 deterministic rules boundary MVP slice implemented and tested
 
-Current planning frontier:
+Current status notes:
 
-- Phase 3 deterministic rules boundary
+- Later rules-system expansion beyond the current MVP slice remains deferred
+- Phase 4 memory and knowledge is not started
 
 See `docs/02_canon/BUILD_ORDER.md` for full phase definitions.
 
@@ -146,20 +155,30 @@ See `docs/02_canon/BUILD_ORDER.md` for full phase definitions.
 Implemented now:
 
 - Typed canonical IDs
+- Core mutation and event contracts
 - Legal mutation surface and bounded validation
 - All-or-nothing backend mutation approval path
-- Authoritative event handoff and runtime integration
+- Authoritative event handoff, event envelope builder, and runtime integration
 - Minimal `StateRoot`
 - Shared actor-family baseline for player and NPC specialization
 - Basic world and actor state expansion fields
+- Map MVP records: `WorldSpaceRecord`, `RegionRecord`, `LocationRecord`
+- Narrow mutation and validation support for `RegionRecord.world_space_ref`
+- Player map discovery storage in `StateRoot.player_map_discovery`
+- Player map discovery read-model helper and backend update helpers
+- Rules boundary MVP for `set_actor_current_activity`
+- Demo and test harness files for rules boundary MVP and map discovery MVP
 - Focused contract and validation tests
 
 Still intentionally not implemented:
 
 - Full deterministic gameplay rules engine
+- Full map mutation-surface support for all MVP location fields
+- Proposed-change/event-pipeline integration for map discovery helpers
+- Travel subsystem
+- Knowledge, rumor, and quest systems
 - AI runtime execution
 - Persistence backend
-- Rich subsystem logic
 - Frontend/gameplay client
 
 ---
@@ -222,6 +241,7 @@ If the task touches AI or voice, also read:
 ### Build
 
 - `docs/05_build/SESSION_MANIFEST.md` - compact session entry point
+- `docs/05_build/IMPLEMENTATION_STATUS.md` - blunt implementation boundary snapshot
 - `docs/05_build/CODEX_WORKFLOW.md` - agent operating rules
 - `AGENT_RULES.md` - non-negotiable agent constraints
 - `docs/05_build/PROMPT_PATTERNS.md` - reusable prompt templates
@@ -278,7 +298,7 @@ Use this in a new session to orient an agent quickly:
 
 ```text
 Read docs/05_build/SESSION_MANIFEST.md first.
-The project has completed the minimal canonical core and the basic world/actor state slice.
+The project has implemented and tested the minimal canonical core, the basic world/actor state slice, and the first Phase 3 rules-boundary MVP slice.
 Default to analysis-first mode unless a canon-backed implementation task is explicit.
 Cite canon files before proposing any change.
 Mark unresolved areas as TODO rather than guessing.

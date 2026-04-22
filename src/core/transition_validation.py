@@ -18,14 +18,20 @@ from src.core.contracts import (
     ValidationResult,
     ValidationStatus,
 )
-from src.core.ids import ActorId, LocationId, RegionId, SaveSlotId
+from src.core.ids import ActorId, LocationId, RegionId, SaveSlotId, WorldSpaceId
 from src.core.state_root import SaveSlotMetaRecord, StateRoot
 from src.npc.actor_baseline import ActorRecord
-from src.world.world_state import LocationRecord, RegionRecord, WorldRootRecord
+from src.world.world_state import (
+    LocationRecord,
+    RegionRecord,
+    WorldRootRecord,
+    WorldSpaceRecord,
+)
 
 
 MutableRecord = (
     ActorRecord
+    | WorldSpaceRecord
     | LocationRecord
     | RegionRecord
     | SaveSlotMetaRecord
@@ -38,6 +44,7 @@ ALLOWED_STATUS_FLAGS = frozenset(StatusFlag)
 CREATEABLE_RECORD_KINDS = frozenset(
     {
         TargetKind.ACTOR,
+        TargetKind.WORLD_SPACE,
         TargetKind.LOCATION,
         TargetKind.REGION,
         TargetKind.SAVE_SLOT_META,
@@ -70,6 +77,7 @@ ALLOWED_SLOT_MATRIX: dict[TargetKind, frozenset[SlotKey]] = {
             SlotKey.ACTIVE_FACTION_REF,
         }
     ),
+    TargetKind.WORLD_SPACE: frozenset({SlotKey.SEA_LEVEL_Z}),
     TargetKind.LOCATION: frozenset(
         {
             SlotKey.DISPLAY_NAME,
@@ -106,6 +114,7 @@ VALUE_SLOTS = frozenset(
         SlotKey.CURRENT_ACTIVITY,
         SlotKey.WORLD_TIME,
         SlotKey.CALENDAR_REF,
+        SlotKey.SEA_LEVEL_Z,
         SlotKey.LOCATION_TYPE,
         SlotKey.SAVE_LABEL,
         SlotKey.SAVE_LAST_UPDATED,
@@ -189,9 +198,17 @@ def validate_proposed_change(
 
     request_errors: list[str] = []
     approved: list[ApprovedMutation] = []
+    pending_created_ids, duplicate_create_errors = _collect_pending_create_ids(
+        proposed_change
+    )
+    request_errors.extend(duplicate_create_errors)
 
     for requested_change in proposed_change.requested_changes:
-        mutation_errors = _validate_requested_mutation(requested_change, state_root)
+        mutation_errors = _validate_requested_mutation(
+            requested_change,
+            state_root,
+            pending_created_ids,
+        )
         if mutation_errors:
             request_errors.extend(mutation_errors)
             continue
@@ -247,6 +264,7 @@ def apply_approved_mutations(
 def _validate_requested_mutation(
     requested_change: RequestedMutation,
     state_root: StateRoot,
+    pending_created_ids: Mapping[TargetKind, frozenset[str]],
 ) -> list[str]:
     errors: list[str] = []
 
@@ -257,7 +275,7 @@ def _validate_requested_mutation(
         return [f"Illegal target kind: {requested_change.target.kind!s}."]
 
     if requested_change.mutation_kind is MutationKind.CREATE_RECORD:
-        return _validate_create_record(requested_change, state_root)
+        return _validate_create_record(requested_change, state_root, pending_created_ids)
 
     if requested_change.target.record_id is None:
         return ["Non-create mutations require a target record_id."]
@@ -275,7 +293,7 @@ def _validate_requested_mutation(
     if requested_change.mutation_kind is MutationKind.SET_VALUE:
         errors.extend(_validate_set_value(requested_change))
     elif requested_change.mutation_kind is MutationKind.SET_REFERENCE:
-        errors.extend(_validate_set_reference(requested_change, state_root))
+        errors.extend(_validate_set_reference(requested_change, state_root, pending_created_ids))
     elif requested_change.mutation_kind is MutationKind.ADD_REFERENCE:
         errors.extend(_validate_add_reference(requested_change, state_root))
     elif requested_change.mutation_kind is MutationKind.REMOVE_REFERENCE:
@@ -289,6 +307,7 @@ def _validate_requested_mutation(
 def _validate_create_record(
     requested_change: RequestedMutation,
     state_root: StateRoot,
+    pending_created_ids: Mapping[TargetKind, frozenset[str]],
 ) -> list[str]:
     argument_errors = _validate_argument_keys(
         requested_change.arguments,
@@ -338,6 +357,7 @@ def _validate_create_record(
                 SlotKey(slot_name),
                 value,
                 state_root,
+                pending_created_ids,
             )
         )
     return errors
@@ -371,6 +391,8 @@ def _validate_set_value(requested_change: RequestedMutation) -> list[str]:
             AgencySource(value)
         except ValueError:
             return [f"Illegal agency_source value: {value!r}."]
+    if slot is SlotKey.SEA_LEVEL_Z and not isinstance(value, (int, float)):
+        return [f"Illegal sea_level_z value: {value!r}."]
 
     return []
 
@@ -378,6 +400,7 @@ def _validate_set_value(requested_change: RequestedMutation) -> list[str]:
 def _validate_set_reference(
     requested_change: RequestedMutation,
     state_root: StateRoot,
+    pending_created_ids: Mapping[TargetKind, frozenset[str]],
 ) -> list[str]:
     argument_errors = _validate_argument_keys(
         requested_change.arguments,
@@ -398,7 +421,7 @@ def _validate_set_reference(
     if not isinstance(ref_id, str) or not ref_id:
         return ["set_reference requires ref_id as a non-empty string."]
 
-    return _validate_reference_target_exists(slot, ref_id, state_root)
+    return _validate_reference_target_exists(slot, ref_id, state_root, pending_created_ids)
 
 
 def _validate_add_reference(
@@ -544,6 +567,9 @@ def _apply_create_record(state_root: StateRoot, mutation: ApprovedMutation) -> N
     if target_kind is TargetKind.ACTOR:
         record = ActorRecord(actor_id=typed_new_id)
         state_root.actors[str(typed_new_id)] = record
+    elif target_kind is TargetKind.WORLD_SPACE:
+        record = WorldSpaceRecord(world_space_id=typed_new_id)
+        state_root.world_spaces[str(typed_new_id)] = record
     elif target_kind is TargetKind.LOCATION:
         record = LocationRecord(location_id=typed_new_id)
         state_root.locations[str(typed_new_id)] = record
@@ -595,9 +621,11 @@ def _apply_status_flag(
 def _coerce_new_id(
     target_kind: TargetKind,
     raw_id: str,
-) -> ActorId | LocationId | RegionId | SaveSlotId:
+) -> ActorId | LocationId | RegionId | SaveSlotId | WorldSpaceId:
     if target_kind is TargetKind.ACTOR:
         return ActorId(raw_id)
+    if target_kind is TargetKind.WORLD_SPACE:
+        return WorldSpaceId(raw_id)
     if target_kind is TargetKind.LOCATION:
         return LocationId(raw_id)
     if target_kind is TargetKind.REGION:
@@ -649,6 +677,7 @@ def _validate_initial_slot_value(
     slot: SlotKey,
     value: object,
     state_root: StateRoot,
+    pending_created_ids: Mapping[TargetKind, frozenset[str]],
 ) -> list[str]:
     if not is_legal_slot_for_target(target_kind, slot):
         return [f"Illegal slot {slot.value} for target kind {target_kind.value}."]
@@ -685,12 +714,14 @@ def _validate_initial_slot_value(
                 AgencySource(value)
             except ValueError:
                 return [f"Illegal agency_source value: {value!r}."]
+        if slot is SlotKey.SEA_LEVEL_Z and not isinstance(value, (int, float)):
+            return [f"Illegal sea_level_z value: {value!r}."]
         return []
 
     if slot in SINGLE_REFERENCE_SLOTS:
         if not isinstance(value, str) or not value:
             return [f"Initial reference slot {slot.value} requires a non-empty string value."]
-        return _validate_reference_target_exists(slot, value, state_root)
+        return _validate_reference_target_exists(slot, value, state_root, pending_created_ids)
 
     return [f"Initial slot {slot.value} is not supported for create_record in Phase 1."]
 
@@ -714,6 +745,8 @@ def _store_for_target_kind(
 ) -> dict[str, object]:
     if target_kind is TargetKind.ACTOR:
         return state_root.actors
+    if target_kind is TargetKind.WORLD_SPACE:
+        return state_root.world_spaces
     if target_kind is TargetKind.LOCATION:
         return state_root.locations
     if target_kind is TargetKind.REGION:
@@ -736,7 +769,14 @@ def _get_record(
     record = store[str(record_id)]
     if not isinstance(
         record,
-        (ActorRecord, LocationRecord, RegionRecord, SaveSlotMetaRecord, WorldRootRecord),
+        (
+            ActorRecord,
+            WorldSpaceRecord,
+            LocationRecord,
+            RegionRecord,
+            SaveSlotMetaRecord,
+            WorldRootRecord,
+        ),
     ):
         raise TypeError("Resolved record has unsupported type.")
     return record
@@ -762,15 +802,80 @@ def _validate_reference_target_exists(
     slot: SlotKey,
     ref_id: str,
     state_root: StateRoot,
+    pending_created_ids: Mapping[TargetKind, frozenset[str]],
 ) -> list[str]:
-    if slot is SlotKey.LOCATION_REF and ref_id not in state_root.locations:
+    if (
+        slot is SlotKey.LOCATION_REF
+        and ref_id not in state_root.locations
+        and ref_id not in pending_created_ids.get(TargetKind.LOCATION, frozenset())
+    ):
         return [f"Unknown location reference: {ref_id}."]
-    if slot is SlotKey.REGION_REF and ref_id not in state_root.regions:
+    if (
+        slot is SlotKey.REGION_REF
+        and ref_id not in state_root.regions
+        and ref_id not in pending_created_ids.get(TargetKind.REGION, frozenset())
+    ):
         return [f"Unknown region reference: {ref_id}."]
-    if slot is SlotKey.WORLD_SPACE_REF and ref_id not in state_root.world_spaces:
+    if (
+        slot is SlotKey.WORLD_SPACE_REF
+        and ref_id not in state_root.world_spaces
+        and ref_id not in pending_created_ids.get(TargetKind.WORLD_SPACE, frozenset())
+    ):
         return [f"Unknown world space reference: {ref_id}."]
-    if slot is SlotKey.REGION_PARENT_REF and ref_id not in state_root.regions:
+    if (
+        slot is SlotKey.REGION_PARENT_REF
+        and ref_id not in state_root.regions
+        and ref_id not in pending_created_ids.get(TargetKind.REGION, frozenset())
+    ):
         return [f"Unknown region parent reference: {ref_id}."]
-    if slot is SlotKey.PLAYER_ACTOR_REF and ref_id not in state_root.actors:
+    if (
+        slot is SlotKey.PLAYER_ACTOR_REF
+        and ref_id not in state_root.actors
+        and ref_id not in pending_created_ids.get(TargetKind.ACTOR, frozenset())
+    ):
         return [f"Unknown actor reference: {ref_id}."]
     return []
+
+
+def _collect_pending_create_ids(
+    proposed_change: ProposedChange,
+) -> tuple[dict[TargetKind, frozenset[str]], tuple[str, ...]]:
+    pending_by_kind: dict[TargetKind, set[str]] = {}
+    duplicate_errors: list[str] = []
+
+    for requested_change in proposed_change.requested_changes:
+        if requested_change.mutation_kind is not MutationKind.CREATE_RECORD:
+            continue
+
+        record_kind_obj = requested_change.arguments.get("record_kind")
+        new_id_obj = requested_change.arguments.get("new_id")
+
+        if not isinstance(record_kind_obj, str) or not isinstance(new_id_obj, str):
+            continue
+
+        try:
+            record_kind = TargetKind(record_kind_obj)
+        except ValueError:
+            continue
+
+        if record_kind is not requested_change.target.kind:
+            continue
+        if requested_change.target.record_id is not None:
+            continue
+
+        pending_ids = pending_by_kind.setdefault(record_kind, set())
+        if new_id_obj in pending_ids:
+            duplicate_errors.append(
+                "Duplicate create_record new_id for target kind "
+                f"{record_kind.value}: {new_id_obj}."
+            )
+            continue
+        pending_ids.add(new_id_obj)
+
+    return (
+        {
+            target_kind: frozenset(pending_ids)
+            for target_kind, pending_ids in pending_by_kind.items()
+        },
+        tuple(duplicate_errors),
+    )

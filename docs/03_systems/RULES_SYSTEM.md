@@ -15,6 +15,12 @@ Cross-reference:
 - `docs/04_contracts/AI_PROPOSAL_FLOW.md`
 - `docs/04_contracts/NPC_STATE_SCHEMA.md`
 
+Status note:
+
+- This document defines the broader canon for future deterministic rules.
+- Current code implements only a narrow Phase 3 MVP rules-boundary slice.
+- Current code does not yet implement this full formula as a general gameplay-wide rules engine.
+
 ---
 
 ## Core Resolution Formula
