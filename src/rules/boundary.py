@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from src.core.contracts import (
+    AuthoritativeEvent,
     EventCategory,
     EventHandoff,
     MutationKind,
@@ -12,15 +13,9 @@ from src.core.contracts import (
     SlotKey,
     TargetKind,
     TargetSelector,
-    ValidationStatus,
 )
-from src.core.runtime import AuthoritativeEvent
+from src.core.runtime import process_proposed_change
 from src.core.state_root import StateRoot
-from src.core.transition_validation import (
-    apply_approved_mutations,
-    validate_proposed_change,
-)
-from src.events.event_envelope import build_authoritative_event
 from src.rules.contracts import RulesActionRequest, RulesInspectionResult
 
 
@@ -103,20 +98,12 @@ def process_rules_action(
     if proposed_change is None or event_handoff is None:
         raise ValueError("Accepted rules inspection result must include ProposedChange and EventHandoff.")
 
-    validation_result = validate_proposed_change(proposed_change, state_root)
-    if validation_result.status is ValidationStatus.REJECTED:
-        return state_root, (), validation_result.diagnostics
-
-    updated_state = apply_approved_mutations(
+    return process_proposed_change(
         state_root,
-        validation_result.approved_mutations,
+        proposed_change,
+        event_suffix_prefix=event_suffix_prefix,
+        event_handoff_override=(event_handoff,),
     )
-    event = build_authoritative_event(
-        handoff=event_handoff,
-        event_suffix=f"{event_suffix_prefix}_1",
-        occurred_at=proposed_change.submitted_at,
-    )
-    return updated_state, (event,), validation_result.diagnostics
 
 
 def _make_submitted_at() -> str:

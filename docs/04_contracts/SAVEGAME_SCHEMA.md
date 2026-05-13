@@ -10,6 +10,7 @@ Cross-reference:
 - `docs/04_contracts/WORLD_STATE_SCHEMA.md`
 - `docs/04_contracts/NPC_STATE_SCHEMA.md`
 - `docs/06_decisions/ADR_PLAYER_AS_ACTOR.md`
+- `docs/06_decisions/ADR_SAVE_LOAD_AND_PERSISTENCE.md` — operational linkage between snapshots, event checkpoints, and save metadata
 
 ## Save Slot Model
 

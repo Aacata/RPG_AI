@@ -74,7 +74,7 @@ All of the following must be true before Phase 1 begins:
 
 ## Phase 1: Minimal Canonical Core
 
-**Status: Implemented and tested in the current repo; persistence and save/load direction remain open**
+**Status: Implemented and tested in the current repo; SQLite persistence MVP and save/load ADR landed; automatic post-mutation persistence hook remains open**
 
 ### Focus
 - Create the minimal backend simulation core in `src/core`
@@ -99,25 +99,28 @@ All of the following must be true before Phase 1 begins:
 ### Current repo status
 - `src/core` exists with typed canonical IDs, core mutation contracts, validation, and atomic apply support
 - `src/events/event_envelope.py` exists and builds `AuthoritativeEvent` records from backend `EventHandoff` data
-- `src/core/runtime.py` routes `ProposedChange -> validation -> atomic apply -> authoritative event build`
+- `src/core/runtime.py` routes `ProposedChange -> validation -> atomic apply -> authoritative event build` and is the canonical runtime entry point that all event-integrated slices delegate to
+- Phase 1 validator hardening is in place: all-or-nothing batch rejection, deepcopy-based atomic apply, broadened slot matrix for actor/world/region/location/save-slot targets, status-flag handling, and in-batch pending-create-ID resolution so cross-references inside one `ProposedChange` validate correctly
 - `tests/test_phase1_core_slice.py` covers the current core slice
-- NOTE: persistence backend and save/load direction are still not implemented
+- `src/persistence/` provides SQLite initialization with `schema_meta` versioning, append-only `authoritative_events` storage with fetch-by-id and ordered listing, and versioned JSON `state_snapshots` for full `StateRoot` round-trip via `SnapshotRepository`
+- `tests/test_persistence_phase1.py` covers event append/fetch and snapshot round-trip
+- `docs/06_decisions/ADR_SAVE_LOAD_AND_PERSISTENCE.md` records the hybrid save/load direction (snapshots primary, append-only event log secondary, deltas deferred)
+- NOTE: automatic persistence after every mutation is not wired into `process_proposed_change` yet; callers or future orchestration must append events and snapshots explicitly until a narrow hook is added (see `docs/05_build/PHASE2_CLOSE_PLAN.md`)
 
 ### Exit Criteria
 All of the following must be true before Phase 2 begins:
 
 - [x] `src/core` exists with canonical entity ID generation
 - [x] Event emission interface implemented and tested
-- [ ] At least one event type can be created, stored, and retrieved
+- [x] At least one event type can be created, stored, and retrieved
 - [x] Basic state transition validation scaffold in place
-- [ ] Persistence layer (SQLite) initialized with schema versioning
-- [ ] Save/load direction decided and recorded (snapshot, delta, or hybrid)
+- [x] Persistence layer (SQLite) initialized with schema versioning
+- [x] Save/load direction decided and recorded (snapshot, delta, or hybrid)
 - [x] All core modules have corresponding contract tests for the currently implemented slice
 - [x] No AI, frontend, or tooling code exists in `src/core`
 
 ### Key decisions to make during this phase
-- Whether `events` is a standalone module or lives under `core` while remaining
-  conceptually separate
+- Decided: `events` is a standalone module at `src/events/` that the core runtime imports from. Conceptual separation is preserved. The standalone-module convention is now canon for Phase 1.
 - Exact save/load strategy (recommend recording as an ADR)
 - Whether canonical entity IDs are UUIDs, sequential integers, or typed composites
 
@@ -125,7 +128,7 @@ All of the following must be true before Phase 2 begins:
 
 ## Phase 2: Basic World and NPC State
 
-**Status: Implemented slice in the current repo and tested; some broader phase goals remain open**
+**Status: Implemented slice in the current repo and tested; snapshot round-trip MVP exists; some broader phase goals remain open**
 
 ### Focus
 - Introduce canonical world state container
@@ -155,9 +158,11 @@ All of the following must be true before Phase 2 begins:
 - Map MVP records now include `WorldSpaceRecord` plus `LocationRecord.x/y/z/biome/is_hidden_by_default`
 - Actor spatial linkage remains `location_ref` only
 - Narrow mutation and validation support exists for `RegionRecord.world_space_ref`
-- Player-viewpoint map discovery storage, read-model helper, and backend update helpers exist and are tested
-- `tools/test_env_map_discovery_v0.py` demonstrates the current discovery MVP
+- Spatial publication v0 exists in `src/world/spatial_publication.py`: a narrow backend-owned bundle that creates `WorldSpace` + `Region` + `Location` atomically through `process_proposed_change(...)`, using in-batch pending-create-ID resolution so cross-references inside the bundle validate correctly
+- Player-viewpoint map discovery: storage, read-model helper, validated pipeline in `src/world/map_discovery_pipeline.py`, and backward-compatible wrappers in `src/world/map_discovery_updates.py` (reveal, reveal name, mark visited) are tested
+- `tools/test_env_map_discovery_v0.py` demonstrates the current discovery MVP; `tools/test_env_spatial_publication_v0.py` demonstrates the spatial publication v0 slice
 - NOTE: full mutation-surface support for `LocationRecord.x/y/z/biome/is_hidden_by_default` is not implemented
+- NOTE: spatial publication v0 publishes only the fields that already have validator support; the unpublishable spatial fields remain record-level only
 
 ### Exit Criteria
 All of the following must be true before Phase 3 begins:
@@ -166,10 +171,10 @@ All of the following must be true before Phase 3 begins:
 - [x] `src/npc` exists with canonical actor records using shared family baseline
 - [x] Player specialization implemented within shared actor family
 - [ ] NPC importance tiers implemented and stored
-- [x] World time and calendar state implemented
-- [ ] Faction link placeholders in place for actors and locations
-- [ ] World and actor state can be snapshotted and restored
-- [ ] All state changes emit events via the Phase 1 event interface
+- [x] World time and calendar state fields stored on `WorldRootRecord` (`world_time`, `calendar_ref`) with validated `SET_VALUE` mutation support; canonical time progression and a real calendar model remain deferred
+- [x] Faction link placeholders in place for actors (`ActorRecord.faction_link_refs` via `ADD_REFERENCE`); not yet on locations
+- [x] World and actor state can be snapshotted and restored (MVP: `SnapshotRepository` + JSON codec in `src/persistence/`; `SaveSlotMetaRecord` refs written by `save_slot_checkpoint_snapshot` / restored via `load_state_from_save_snapshot_ref`)
+- [x] Implemented backend-owned state mutations emit authoritative events via the Phase 1 interface (including map discovery reveal/name/visited through `map_discovery_pipeline` and `TargetKind.PLAYER_MAP_DISCOVERY`; `is_marker_visible` and rumor/quest-driven discovery remain deferred)
 - [x] Contract tests cover world and actor state mutations for the currently implemented slice
 - [x] No rules resolution logic lives in world or NPC modules
 - [x] No AI code lives in world or NPC modules
@@ -390,7 +395,7 @@ All of the following must be true before Phase 7 begins:
 
 ### Key decisions to make during this phase
 - Whether emote bank ingestion workflow is implemented now or deferred
-- Whether the campaign tool is NiceGUI-based from the start or CLI-first
+- Decided: inspection and debug UI stack — **CLI-first for inspection v0**; richer dashboards (for example NiceGUI) deferred until read-model contracts stabilize. See `docs/05_build/DEBUG_INSPECTION_UI.md`.
 
 ---
 
@@ -442,10 +447,13 @@ current phase work unless promoted through the candidate pipeline.
 - NPC importance tier names are still not locked in canon and should be resolved before actor-tier semantics expand further
 - HP formula multipliers remain open before later full rules-system expansion
 - FLOW Ollama model selection must be locked before Phase 5 (blocking)
-- Save/load strategy direction remains undecided before persistence and snapshot work expands
-- Whether `events` is a standalone module or lives under `core` (Phase 1 decision)
+- Save game granularity and snapshot cadence relative to event replay (ADR records hybrid intent; operational defaults still TBD)
 - Whether campaign rule variation hooks are added in a later Phase 3 expansion or deferred further
 - Whether rumor propagation simulation is implemented in Phase 4 or deferred
 - Whether narrator AI and specialist AI roles are separated in Phase 5 or later
 - Whether emote bank ingestion workflow is implemented in Phase 6 or deferred
-- Whether the campaign tool is NiceGUI-based from the start or CLI-first
+
+## Resolved Phase 1 Questions
+
+- `events` lives at `src/events/` as a standalone module that the core runtime imports. Conceptual separation between event truth and core orchestration is preserved.
+- Save and load direction for MVP is recorded as hybrid snapshot plus append-only authoritative event log; see `docs/06_decisions/ADR_SAVE_LOAD_AND_PERSISTENCE.md`. Delta materialization between snapshots remains future work.

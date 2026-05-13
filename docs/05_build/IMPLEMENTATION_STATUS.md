@@ -11,8 +11,8 @@ Use this file for blunt implementation boundaries.
 - Canon status: Backend-owned mutation validation and authoritative event handoff are canon.
 - Implemented now: Typed IDs, core mutation/event contracts, validated mutation surface, atomic apply path, authoritative event handoff objects, event object building via the event envelope, and `process_proposed_change(...)`.
 - Tested now: `tests/test_phase1_core_slice.py`.
-- Explicitly not implemented: Persistent event storage, event retrieval backend, persistence backend, save/load strategy, schema versioning beyond current in-memory event object building.
-- Next allowed slice: Keep expanding only through narrow canon-backed contracts. Event construction is not event persistence. Do not imply storage, retrieval, or replay support from current in-memory event object building.
+- Explicitly not implemented in core: automatic SQLite or disk writes from `process_proposed_change` (persistence is opt-in via `src.persistence` orchestration helpers). Save/load strategy beyond contracts, schema versioning beyond current in-memory event object building.
+- Next allowed slice: Keep expanding only through narrow canon-backed contracts. Event construction is not event persistence unless callers use the persistence orchestration layer.
 
 ## World / Map
 
@@ -41,10 +41,18 @@ Use this file for blunt implementation boundaries.
 ## Map Discovery
 
 - Canon status: Discovery is separate from canonical map truth and is backend-owned, not frontend-owned.
-- Implemented now: `MapDiscoveryEntry`, `StateRoot.player_map_discovery`, `build_player_location_discovery_read_model(...)`, and helper-level updates for reveal/name/visited in `src/world/map_discovery_updates.py`.
-- Tested now: `tests/test_phase1_core_slice.py`; demo in `tools/test_env_map_discovery_v0.py`.
-- Explicitly not implemented: Full discovery mechanics, rumor-driven reveal, quest-driven reveal, multi-viewpoint discovery, proposed-change integration, authoritative-event integration for discovery helpers.
-- Next allowed slice: Add one narrow backend-approved discovery contract or trigger path at a time. Do not treat helper functions as full discovery subsystem completion.
+- Implemented now: `MapDiscoveryEntry`, `StateRoot.player_map_discovery`, `build_player_location_discovery_read_model(...)`, and **canonical mutation path** via `TargetKind.PLAYER_MAP_DISCOVERY` + discovery `SlotKey`s in `src/core/transition_validation.py`. High-level builders and WORLD events: `reveal_player_location_through_runtime`, `reveal_player_location_name_through_runtime`, `mark_player_location_visited_through_runtime` in [`src/world/map_discovery_pipeline.py`](d:/BJARKI/RPG_2026_AI/RPG_AI/src/world/map_discovery_pipeline.py). Backward-compatible in-place helpers in [`src/world/map_discovery_updates.py`](d:/BJARKI/RPG_2026_AI/RPG_AI/src/world/map_discovery_updates.py) delegate to the pipeline and sync `player_map_discovery` on the caller's `StateRoot`.
+- Tested now: `tests/test_phase1_core_slice.py` (discovery behavior); `tests/test_map_discovery_pipeline.py` (event category, slot matrix, visit flags).
+- Explicitly not implemented: Full discovery mechanics, rumor-driven reveal, quest-driven reveal, multi-viewpoint discovery, `is_marker_visible` via ProposedChange (field exists on entry only).
+- Next allowed slice: narrow `map_discovery` intents that set `is_marker_visible`, or discovery-from-rumor contracts. Do not treat read-model helpers alone as full discovery completion.
+
+## Spatial Publication
+
+- Canon status: Backend-owned publication path that creates a minimal `WorldSpace` + `Region` + `Location` bundle atomically through the canonical runtime entry point. Tool-origin authoring may request publication; canonical truth ownership remains backend-side.
+- Implemented now: `SpatialBootstrapPublicationRequest`, `inspect_spatial_bootstrap_publication(...)`, and `publish_spatial_bootstrap(...)` in `src/world/spatial_publication.py`. The publisher inspects/validates request fields, builds a `ProposedChange` with three `CREATE_RECORD` mutations (world_space, region, location), and delegates to `process_proposed_change(...)`. Pending-create cross-references are resolved inside the same batch via `_collect_pending_create_ids` in `src/core/transition_validation.py`.
+- Tested now: `tests/test_spatial_publication_v0.py` covers happy path, atomic rejection when the region references an unknown world space, atomic rejection when the location references an unknown region, all-or-nothing rollback on any single invalid mutation, and rejection of duplicate `new_id` within the same bundle. Demo in `tools/test_env_spatial_publication_v0.py`.
+- Explicitly not implemented: Publication of `LocationRecord.x/y/z/biome/is_hidden_by_default` through the mutation surface (those fields remain record-level only), multi-location bundles, hierarchical region trees in one publish, builder-side draft workflow, persistence of published bundles, and any AI-assisted publication proposals.
+- Next allowed slice: Add one narrow canon-backed publication field at a time. Field presence on the record is not mutation support; mutation-surface support is the next gating step before extra spatial fields become publishable.
 
 ## AI Runtime
 
@@ -56,11 +64,11 @@ Use this file for blunt implementation boundaries.
 
 ## Persistence
 
-- Canon status: Persistence direction is not fully decided in canon.
-- Implemented now: Save-slot metadata record only.
-- Tested now: Save-slot metadata is exercised in `tests/test_phase1_core_slice.py` as record state, not as save/load implementation.
-- Explicitly not implemented: SQLite backend, snapshot storage, delta storage, load/replay pipeline, persisted event history.
-- Next allowed slice: Direction-setting and narrow persistence foundation work only after canon-backed decisions. Save-slot metadata is not persistence. Do not imply save/load implementation from save-slot fields.
+- Canon status: Hybrid MVP direction is locked in `docs/06_decisions/ADR_SAVE_LOAD_AND_PERSISTENCE.md` — snapshots as primary restore vehicle, append-only authoritative event log as secondary audit and future replay input, deltas deferred.
+- Implemented now: `src/persistence/` with `open_persistence`, `schema_meta` key `persistence_schema_version`, append-only `authoritative_events` table, `EventRepository.append_events` / `fetch_event_by_id` / `list_events_ordered` / `max_seq`, and `state_snapshots` with `SnapshotRepository.save_snapshot` / `load_snapshot` (optional preassigned `snapshot_id`) plus JSON `StateRoot` codec (`snapshot_schema_version` inside blob). Orchestration in `src/persistence/orchestration.py`: `process_proposed_change_persisted`, `process_rules_action_persisted` (append events after successful applies; core stays SQLite-free), `save_slot_checkpoint_snapshot`, `load_state_from_save_snapshot_ref` for `world_snapshot_ref` / `event_checkpoint_ref` wiring on `SaveSlotMetaRecord`.
+- Tested now: `tests/test_persistence_phase1.py` covers event append and fetch, events emitted from `process_proposed_change` persisted to SQLite, snapshot round-trip, orchestration append/skip-on-reject, rules persisted path, and save-slot checkpoint plus load round-trip.
+- Explicitly not implemented: implicit hook inside `process_proposed_change` itself (callers use orchestration helpers instead), event-sourced full replay from an empty base, delta materialization between snapshots, event-tail replay after snapshot restore, multi-process concurrency.
+- Next allowed slice: optional event tail after `load_snapshot` when replay rules exist; map discovery through `ProposedChange` if closing Phase 2 “all mutations emit events” literally.
 
 ## Travel
 

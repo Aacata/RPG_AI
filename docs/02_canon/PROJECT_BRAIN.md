@@ -75,17 +75,23 @@ Current top-level system areas:
 
 ## Reading Order For Future Contributors And Agents
 
-1. This file
-2. `docs/02_canon/SYSTEM_MAP.md`
-3. `docs/02_canon/DATA_OWNERSHIP.md`
-4. `docs/02_canon/AI_BOUNDARY_RULES.md`
-5. `docs/02_canon/BUILD_ORDER.md`
-6. Relevant system documents in `docs/03_systems/`
-7. Relevant contracts in `docs/04_contracts/`
-8. `docs/05_build/CODEX_WORKFLOW.md`
+1. `docs/05_build/SESSION_MANIFEST.md`
+2. `docs/05_build/IMPLEMENTATION_STATUS.md`
+3. This file
+4. `docs/02_canon/SYSTEM_MAP.md`
+5. `docs/02_canon/DATA_OWNERSHIP.md`
+6. `docs/02_canon/AI_BOUNDARY_RULES.md`
+7. `docs/02_canon/BUILD_ORDER.md`
+8. Relevant system documents in `docs/03_systems/`
+9. Relevant contracts in `docs/04_contracts/`
+10. `docs/05_build/CODEX_WORKFLOW.md`
+11. `docs/05_build/REVIEWER_GATEKEEPER.md` for review or gatekeeping sessions
 
 ## TODO
 
-- Define the minimal canonical runtime boundary inside `src/core` once implementation planning begins.
 - Import any historical architecture notes into `legacy_reference/` before treating them as inputs to canon.
 - Clarify whether the shared actor-family baseline should eventually be renamed into a dedicated actor contract or remain anchored under current NPC naming.
+
+## Resolved
+
+- The minimal canonical runtime boundary inside `src/core` is established. `src/core/runtime.py` exposes `process_proposed_change(...)` as the canonical runtime entry point that routes `ProposedChange -> validation -> atomic apply -> authoritative event handoff`. See `docs/02_canon/BUILD_ORDER.md` Phase 1 and `docs/05_build/IMPLEMENTATION_STATUS.md` for current status.

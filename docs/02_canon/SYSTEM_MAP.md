@@ -238,6 +238,9 @@ The exact runtime dependency graph remains a `TODO`, but the ownership direction
 
 ## TODO
 
-- Define whether `events` remains a standalone module or is folded under `core` while preserving conceptual separation.
 - Define the inspection boundary between `/tools` and `src/tools`.
 - Add a concrete runtime diagram once implementation planning begins.
+
+## Resolved
+
+- `events` remains a standalone module at `src/events/` that the core runtime imports. Conceptual separation between event truth and core orchestration is preserved. See `docs/02_canon/BUILD_ORDER.md` Phase 1 for the canonical record of this decision.

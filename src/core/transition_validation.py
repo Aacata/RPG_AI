@@ -23,6 +23,7 @@ from src.core.state_root import SaveSlotMetaRecord, StateRoot
 from src.npc.actor_baseline import ActorRecord
 from src.world.world_state import (
     LocationRecord,
+    MapDiscoveryEntry,
     RegionRecord,
     WorldRootRecord,
     WorldSpaceRecord,
@@ -36,6 +37,7 @@ MutableRecord = (
     | RegionRecord
     | SaveSlotMetaRecord
     | WorldRootRecord
+    | MapDiscoveryEntry
 )
 
 ALLOWED_TARGET_KINDS = frozenset(TargetKind)
@@ -101,6 +103,13 @@ ALLOWED_SLOT_MATRIX: dict[TargetKind, frozenset[SlotKey]] = {
             SlotKey.PLAYER_ACTOR_REF,
         }
     ),
+    TargetKind.PLAYER_MAP_DISCOVERY: frozenset(
+        {
+            SlotKey.DISCOVERY_IS_REVEALED,
+            SlotKey.DISCOVERY_IS_NAME_REVEALED,
+            SlotKey.DISCOVERY_IS_VISITED,
+        }
+    ),
 }
 
 VALUE_SLOTS = frozenset(
@@ -120,6 +129,9 @@ VALUE_SLOTS = frozenset(
         SlotKey.SAVE_LAST_UPDATED,
         SlotKey.WORLD_SNAPSHOT_REF,
         SlotKey.EVENT_CHECKPOINT_REF,
+        SlotKey.DISCOVERY_IS_REVEALED,
+        SlotKey.DISCOVERY_IS_NAME_REVEALED,
+        SlotKey.DISCOVERY_IS_VISITED,
     }
 )
 
@@ -394,6 +406,16 @@ def _validate_set_value(requested_change: RequestedMutation) -> list[str]:
     if slot is SlotKey.SEA_LEVEL_Z and not isinstance(value, (int, float)):
         return [f"Illegal sea_level_z value: {value!r}."]
 
+    if slot in (
+        SlotKey.DISCOVERY_IS_REVEALED,
+        SlotKey.DISCOVERY_IS_NAME_REVEALED,
+        SlotKey.DISCOVERY_IS_VISITED,
+    ):
+        if requested_change.target.kind is not TargetKind.PLAYER_MAP_DISCOVERY:
+            return [f"Slot {slot.value} is only legal for player_map_discovery targets."]
+        if value is not True:
+            return ["Map discovery boolean slots only accept True in Phase 1."]
+
     return []
 
 
@@ -510,9 +532,37 @@ def _validate_set_status_flag(requested_change: RequestedMutation) -> list[str]:
     return []
 
 
+def _apply_player_map_discovery_set_value(state_root: StateRoot, mutation: ApprovedMutation) -> None:
+    if mutation.mutation_kind is not MutationKind.SET_VALUE:
+        raise ValueError("player_map_discovery only supports set_value mutations in Phase 1.")
+    loc_key = str(mutation.target.record_id)
+    slot = SlotKey(mutation.applied_arguments["slot_key"])
+    raw_value = mutation.applied_arguments["value"]
+    location_record = state_root.locations[loc_key]
+    canon_id = location_record.location_id
+
+    entry = state_root.player_map_discovery.get(loc_key)
+    if entry is None:
+        state_root.player_map_discovery[loc_key] = MapDiscoveryEntry(location_ref=canon_id)
+        entry = state_root.player_map_discovery[loc_key]
+
+    if slot is SlotKey.DISCOVERY_IS_REVEALED:
+        entry.is_revealed = bool(raw_value)
+    elif slot is SlotKey.DISCOVERY_IS_NAME_REVEALED:
+        entry.is_name_revealed = bool(raw_value)
+    elif slot is SlotKey.DISCOVERY_IS_VISITED:
+        entry.is_visited = bool(raw_value)
+    else:
+        raise ValueError(f"Unsupported player_map_discovery slot: {slot.value}.")
+
+
 def _apply_single_mutation(state_root: StateRoot, mutation: ApprovedMutation) -> None:
     if mutation.mutation_kind is MutationKind.CREATE_RECORD:
         _apply_create_record(state_root, mutation)
+        return
+
+    if mutation.target.kind is TargetKind.PLAYER_MAP_DISCOVERY:
+        _apply_player_map_discovery_set_value(state_root, mutation)
         return
 
     record = _get_record(state_root, mutation.target.kind, mutation.target.record_id)
@@ -731,6 +781,8 @@ def _target_exists(
     target_kind: TargetKind,
     record_id: str | None,
 ) -> bool:
+    if target_kind is TargetKind.PLAYER_MAP_DISCOVERY:
+        return record_id is not None and str(record_id) in state_root.locations
     if target_kind is TargetKind.WORLD_ROOT:
         return record_id in (None, "world_root")
     if record_id is None:
@@ -753,6 +805,8 @@ def _store_for_target_kind(
         return state_root.regions
     if target_kind is TargetKind.SAVE_SLOT_META:
         return state_root.save_slots
+    if target_kind is TargetKind.PLAYER_MAP_DISCOVERY:
+        return state_root.player_map_discovery
     raise ValueError(f"Target kind {target_kind.value} does not map to a dictionary store.")
 
 

@@ -25,18 +25,20 @@ That means:
 ## Required Reading Order Before Making Changes
 
 1. `docs/05_build/SESSION_MANIFEST.md`
-2. `docs/02_canon/PROJECT_BRAIN.md`
-3. `docs/02_canon/SYSTEM_MAP.md`
-4. `docs/02_canon/DATA_OWNERSHIP.md`
-5. `docs/02_canon/AI_BOUNDARY_RULES.md`
-6. `docs/02_canon/BUILD_ORDER.md`
-7. Relevant files in `docs/03_systems/`
-8. Relevant files in `docs/04_contracts/`
+2. `docs/05_build/IMPLEMENTATION_STATUS.md`
+3. `docs/02_canon/PROJECT_BRAIN.md`
+4. `docs/02_canon/SYSTEM_MAP.md`
+5. `docs/02_canon/DATA_OWNERSHIP.md`
+6. `docs/02_canon/AI_BOUNDARY_RULES.md`
+7. `docs/02_canon/BUILD_ORDER.md`
+8. Relevant files in `docs/03_systems/`
+9. Relevant files in `docs/04_contracts/`
 
 When relevant:
 
 - Read `docs/03_systems/RULES_SYSTEM.md` before rules-boundary or deterministic-resolution work.
 - Read `docs/03_systems/AI_STACK.md` and `docs/03_systems/VOICE_SYSTEM.md` before AI, voice, adapter, or observability work tied to those systems.
+- Read `docs/05_build/REVIEWER_GATEKEEPER.md` before performing reviewer or gatekeeping work on a proposed slice. That file is operational guidance only; it does not override canon, contracts, or actual code state.
 
 ## How Visionary Ideas Move To Canon
 

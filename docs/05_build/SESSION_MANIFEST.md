@@ -29,6 +29,7 @@ reassigning truth ownership.
 
 ## Operational Reading Rules
 
+- **Batched implementation and release:** follow [`docs/05_build/BUILD_DIRECTIVE.md`](BUILD_DIRECTIVE.md) (implement batch → self-review → drift/bugs → patch → commit → push → next batch until a human-input stop).
 - A record, schema, or field existing does not mean the subsystem semantics are implemented.
 - A helper existing does not mean it is integrated into the full proposed-change or authoritative-event pipeline.
 - Current repo progress includes narrow slices. Do not misread a narrow slice as full subsystem completion.
@@ -111,6 +112,7 @@ Difficulty categories (AI proposes, backend translates to number):
 - Relationship model with locked MVP axes (`RELATIONSHIP_MODEL.md`)
 - Build order phases (`BUILD_ORDER.md`)
 - Agent and contributor operating rules (`AGENT_RULES.md`, `CODEX_WORKFLOW.md`)
+- Autonomous build cycle directive (`BUILD_DIRECTIVE.md`)
 
 ### Partially defined - needs clarification before later implementation
 
@@ -118,7 +120,7 @@ Difficulty categories (AI proposes, backend translates to number):
 - Exact XP formula and level thresholds
 - HP multipliers and level scaling values
 - FLOW model selection (Ollama model TBD)
-- Save game granularity and snapshot strategy
+- Save game granularity, snapshot cadence relative to event replay, and save-slot orchestration defaults (hybrid direction is recorded in `ADR_SAVE_LOAD_AND_PERSISTENCE.md`; operational defaults still TBD)
 - Campaign configuration publication rules
 
 ### Not yet in canon - do not implement
@@ -137,13 +139,16 @@ Difficulty categories (AI proposes, backend translates to number):
 Current implemented foundation:
 
 - Phase 1 minimal canonical core implemented and tested
-- Phase 1 hardening pass implemented and tested
+- Phase 1 validator hardening implemented and tested (pending-create-ID resolution for in-batch references, deepcopy-based atomic apply, broadened slot matrix, and all-or-nothing batch rejection)
+- Phase 1 persistence MVP implemented and tested (SQLite schema versioning, append-only authoritative event storage with retrieval, versioned JSON snapshots of `StateRoot`, hybrid save/load direction recorded in ADR)
 - Phase 2 basic world and actor state slice implemented and tested
+- Phase 2 spatial publication v0 slice implemented and tested (atomic world_space + region + location publish via `process_proposed_change`)
 - Phase 3 deterministic rules boundary MVP slice implemented and tested
 
 Current status notes:
 
 - Later rules-system expansion beyond the current MVP slice remains deferred
+- Optional event tail after snapshot restore is not implemented; see `PHASE2_CLOSE_PLAN.md`
 - Phase 4 memory and knowledge is not started
 
 See `docs/02_canon/BUILD_ORDER.md` for full phase definitions.
@@ -158,27 +163,32 @@ Implemented now:
 - Core mutation and event contracts
 - Legal mutation surface and bounded validation
 - All-or-nothing backend mutation approval path
+- In-batch pending-create-ID resolution for cross-record references inside one `ProposedChange`
 - Authoritative event handoff, event envelope builder, and runtime integration
+- Canonical runtime entry point `process_proposed_change(...)` used by every event-integrated slice
 - Minimal `StateRoot`
 - Shared actor-family baseline for player and NPC specialization
 - Basic world and actor state expansion fields
 - Map MVP records: `WorldSpaceRecord`, `RegionRecord`, `LocationRecord`
 - Narrow mutation and validation support for `RegionRecord.world_space_ref`
+- Spatial publication v0: atomic `WorldSpace` + `Region` + `Location` publication via `process_proposed_change`
 - Player map discovery storage in `StateRoot.player_map_discovery`
 - Player map discovery read-model helper and backend update helpers
 - Rules boundary MVP for `set_actor_current_activity`
-- Demo and test harness files for rules boundary MVP and map discovery MVP
+- Demo and test harness files for rules boundary MVP, map discovery MVP, and spatial publication v0
 - Focused contract and validation tests
+- SQLite persistence MVP: `src/persistence/` (`EventRepository`, `SnapshotRepository`, `open_persistence`) with tests in `tests/test_persistence_phase1.py`
 
 Still intentionally not implemented:
 
 - Full deterministic gameplay rules engine
-- Full map mutation-surface support for all MVP location fields
+- Full map mutation-surface support for `LocationRecord.x/y/z/biome/is_hidden_by_default`
 - Proposed-change/event-pipeline integration for map discovery helpers
 - Travel subsystem
 - Knowledge, rumor, and quest systems
 - AI runtime execution
-- Persistence backend
+- Automatic persistence after every backend mutation (events must be appended explicitly or via a future orchestration hook)
+- Full event-sourced replay from an empty base
 - Frontend/gameplay client
 
 ---
@@ -186,20 +196,25 @@ Still intentionally not implemented:
 ## Required Reading Order Before Making Changes
 
 1. This file
-2. `docs/02_canon/PROJECT_BRAIN.md`
-3. `docs/02_canon/SYSTEM_MAP.md`
-4. `docs/02_canon/DATA_OWNERSHIP.md`
-5. `docs/02_canon/AI_BOUNDARY_RULES.md`
-6. `docs/02_canon/BUILD_ORDER.md`
-7. `docs/03_systems/RULES_SYSTEM.md`
-8. Relevant system files in `docs/03_systems/`
-9. Relevant contract files in `docs/04_contracts/`
-10. `docs/05_build/CODEX_WORKFLOW.md`
+2. `docs/05_build/IMPLEMENTATION_STATUS.md`
+3. `docs/02_canon/PROJECT_BRAIN.md`
+4. `docs/02_canon/SYSTEM_MAP.md`
+5. `docs/02_canon/DATA_OWNERSHIP.md`
+6. `docs/02_canon/AI_BOUNDARY_RULES.md`
+7. `docs/02_canon/BUILD_ORDER.md`
+8. `docs/03_systems/RULES_SYSTEM.md`
+9. Relevant system files in `docs/03_systems/`
+10. Relevant contract files in `docs/04_contracts/`
+11. `docs/05_build/CODEX_WORKFLOW.md`
 
 If the task touches AI or voice, also read:
 
 - `docs/03_systems/AI_STACK.md`
 - `docs/03_systems/VOICE_SYSTEM.md`
+
+If the task is a review or gatekeeping pass, also read:
+
+- `docs/05_build/REVIEWER_GATEKEEPER.md`
 
 ---
 
@@ -243,12 +258,16 @@ If the task touches AI or voice, also read:
 - `docs/05_build/SESSION_MANIFEST.md` - compact session entry point
 - `docs/05_build/IMPLEMENTATION_STATUS.md` - blunt implementation boundary snapshot
 - `docs/05_build/CODEX_WORKFLOW.md` - agent operating rules
+- `docs/05_build/REVIEWER_GATEKEEPER.md` - reviewer and gatekeeping operating profile
+- `docs/05_build/PHASE2_CLOSE_PLAN.md` - remaining Phase 2 close items after persistence MVP
+- `docs/05_build/DEBUG_INSPECTION_UI.md` - Phase 6 inspection UI scope (CLI-first v0)
 - `AGENT_RULES.md` - non-negotiable agent constraints
 - `docs/05_build/PROMPT_PATTERNS.md` - reusable prompt templates
 
 ### Decisions
 
 - `docs/06_decisions/ADR_PLAYER_AS_ACTOR.md` - player in shared actor family
+- `docs/06_decisions/ADR_SAVE_LOAD_AND_PERSISTENCE.md` - SQLite persistence, event append log, snapshot strategy
 
 ### Inbox and Candidates
 
@@ -298,7 +317,7 @@ Use this in a new session to orient an agent quickly:
 
 ```text
 Read docs/05_build/SESSION_MANIFEST.md first.
-The project has implemented and tested the minimal canonical core, the basic world/actor state slice, and the first Phase 3 rules-boundary MVP slice.
+The project has implemented and tested the minimal canonical core (including SQLite persistence MVP for events and snapshots), the basic world/actor state slice, spatial publication v0, and the first Phase 3 rules-boundary MVP slice.
 Default to analysis-first mode unless a canon-backed implementation task is explicit.
 Cite canon files before proposing any change.
 Mark unresolved areas as TODO rather than guessing.

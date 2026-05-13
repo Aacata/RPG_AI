@@ -14,6 +14,7 @@ class TargetKind(str, Enum):
     LOCATION = "location"
     REGION = "region"
     SAVE_SLOT_META = "save_slot_meta"
+    PLAYER_MAP_DISCOVERY = "player_map_discovery"
 
 
 class SlotKey(str, Enum):
@@ -44,6 +45,9 @@ class SlotKey(str, Enum):
     WORLD_SNAPSHOT_REF = "world_snapshot_ref"
     EVENT_CHECKPOINT_REF = "event_checkpoint_ref"
     PLAYER_ACTOR_REF = "player_actor_ref"
+    DISCOVERY_IS_REVEALED = "discovery_is_revealed"
+    DISCOVERY_IS_NAME_REVEALED = "discovery_is_name_revealed"
+    DISCOVERY_IS_VISITED = "discovery_is_visited"
 
 
 class StatusFlag(str, Enum):

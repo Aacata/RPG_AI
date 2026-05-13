@@ -24,6 +24,8 @@ Status note:
 - `WorldSpaceRecord`, `RegionRecord`, and `LocationRecord` exist in code.
 - `LocationRecord` currently carries `x`, `y`, `z`, `biome`, and `is_hidden_by_default`.
 - Narrow validated mutation support currently exists for `RegionRecord.world_space_ref`.
+- A narrow backend-owned publication path, spatial publication v0, exists in `src/world/spatial_publication.py`. It atomically publishes one `WorldSpace` + one `Region` + one `Location` through `process_proposed_change(...)` and validates cross-references inside the same batch.
+- Spatial publication v0 publishes only fields that already have validator support. `LocationRecord.x/y/z/biome/is_hidden_by_default` are not yet publishable through the mutation surface and remain record-level only.
 - Full mutation-surface rollout for all `LocationRecord` spatial fields is not implemented.
 - Actor spatial linkage remains `location_ref` only.
 

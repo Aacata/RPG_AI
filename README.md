@@ -31,12 +31,15 @@ This phase establishes repository structure, architectural rules, and canonical 
 
 Read the following in order before making any architectural or code change:
 
-1. [PROJECT_BRAIN](./docs/02_canon/PROJECT_BRAIN.md)
-2. [SYSTEM_MAP](./docs/02_canon/SYSTEM_MAP.md)
-3. [DATA_OWNERSHIP](./docs/02_canon/DATA_OWNERSHIP.md)
-4. [AI_BOUNDARY_RULES](./docs/02_canon/AI_BOUNDARY_RULES.md)
-5. Relevant files in `docs/03_systems` and `docs/04_contracts`
-6. [CODEX_WORKFLOW](./docs/05_build/CODEX_WORKFLOW.md)
+1. [SESSION_MANIFEST](./docs/05_build/SESSION_MANIFEST.md)
+2. [IMPLEMENTATION_STATUS](./docs/05_build/IMPLEMENTATION_STATUS.md)
+3. [PROJECT_BRAIN](./docs/02_canon/PROJECT_BRAIN.md)
+4. [SYSTEM_MAP](./docs/02_canon/SYSTEM_MAP.md)
+5. [DATA_OWNERSHIP](./docs/02_canon/DATA_OWNERSHIP.md)
+6. [AI_BOUNDARY_RULES](./docs/02_canon/AI_BOUNDARY_RULES.md)
+7. Relevant files in `docs/03_systems` and `docs/04_contracts`
+8. [CODEX_WORKFLOW](./docs/05_build/CODEX_WORKFLOW.md)
+9. [REVIEWER_GATEKEEPER](./docs/05_build/REVIEWER_GATEKEEPER.md) for review or gatekeeping sessions
 
 ## Working Model
 
