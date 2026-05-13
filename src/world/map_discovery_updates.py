@@ -6,6 +6,7 @@ from src.world.map_discovery_pipeline import (
     mark_player_location_visited_through_runtime,
     reveal_player_location_name_through_runtime,
     reveal_player_location_through_runtime,
+    set_player_location_marker_visible_through_runtime,
 )
 
 
@@ -43,4 +44,16 @@ def mark_player_location_visited(state_root: StateRoot, location_ref: LocationId
     )
     if not events:
         raise ValueError(diagnostics[0] if diagnostics else "Map discovery visit was rejected.")
+    _sync_discovery_overlay(state_root, updated)
+
+
+def set_player_location_marker_visible(state_root: StateRoot, location_ref: LocationId) -> None:
+    updated, events, diagnostics = set_player_location_marker_visible_through_runtime(
+        state_root,
+        location_ref,
+    )
+    if not events:
+        raise ValueError(
+            diagnostics[0] if diagnostics else "Map discovery marker_visible was rejected."
+        )
     _sync_discovery_overlay(state_root, updated)

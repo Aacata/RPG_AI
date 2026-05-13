@@ -78,6 +78,45 @@ def reveal_player_location_through_runtime(
     )
 
 
+def set_player_location_marker_visible_through_runtime(
+    state_root: StateRoot,
+    location_ref: LocationId,
+    *,
+    proposal_id: str | None = None,
+    submitted_at: str | None = None,
+    origin_type: ProposedChangeOrigin = ProposedChangeOrigin.SIMULATION_SYSTEM,
+    origin_actor_id: ActorId | None = None,
+) -> tuple[StateRoot, tuple[AuthoritativeEvent, ...], tuple[str, ...]]:
+    loc_key = str(location_ref)
+    pid = proposal_id or f"map_discovery_marker_{uuid.uuid4().hex[:12]}"
+    ts = submitted_at or _utc_timestamp()
+    proposed = ProposedChange(
+        proposal_id=pid,
+        origin_type=origin_type,
+        intent_type="map_discovery.set_marker_visible",
+        target_refs=(TargetSelector(TargetKind.PLAYER_MAP_DISCOVERY, loc_key),),
+        requested_changes=(
+            RequestedMutation(
+                change_id=f"{pid}_c1",
+                mutation_kind=MutationKind.SET_VALUE,
+                target=TargetSelector(TargetKind.PLAYER_MAP_DISCOVERY, loc_key),
+                arguments={
+                    "slot_key": SlotKey.DISCOVERY_IS_MARKER_VISIBLE.value,
+                    "value": True,
+                },
+            ),
+        ),
+        submitted_at=ts,
+        origin_actor_id=origin_actor_id,
+    )
+    return process_proposed_change(
+        state_root,
+        proposed,
+        event_suffix_prefix="map_discovery",
+        event_handoff_override=(_discovery_handoff("map_discovery.set_marker_visible", loc_key),),
+    )
+
+
 def reveal_player_location_name_through_runtime(
     state_root: StateRoot,
     location_ref: LocationId,

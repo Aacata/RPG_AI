@@ -48,6 +48,7 @@ class SlotKey(str, Enum):
     DISCOVERY_IS_REVEALED = "discovery_is_revealed"
     DISCOVERY_IS_NAME_REVEALED = "discovery_is_name_revealed"
     DISCOVERY_IS_VISITED = "discovery_is_visited"
+    DISCOVERY_IS_MARKER_VISIBLE = "discovery_is_marker_visible"
 
 
 class StatusFlag(str, Enum):

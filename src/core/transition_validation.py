@@ -108,6 +108,7 @@ ALLOWED_SLOT_MATRIX: dict[TargetKind, frozenset[SlotKey]] = {
             SlotKey.DISCOVERY_IS_REVEALED,
             SlotKey.DISCOVERY_IS_NAME_REVEALED,
             SlotKey.DISCOVERY_IS_VISITED,
+            SlotKey.DISCOVERY_IS_MARKER_VISIBLE,
         }
     ),
 }
@@ -132,6 +133,7 @@ VALUE_SLOTS = frozenset(
         SlotKey.DISCOVERY_IS_REVEALED,
         SlotKey.DISCOVERY_IS_NAME_REVEALED,
         SlotKey.DISCOVERY_IS_VISITED,
+        SlotKey.DISCOVERY_IS_MARKER_VISIBLE,
     }
 )
 
@@ -410,6 +412,7 @@ def _validate_set_value(requested_change: RequestedMutation) -> list[str]:
         SlotKey.DISCOVERY_IS_REVEALED,
         SlotKey.DISCOVERY_IS_NAME_REVEALED,
         SlotKey.DISCOVERY_IS_VISITED,
+        SlotKey.DISCOVERY_IS_MARKER_VISIBLE,
     ):
         if requested_change.target.kind is not TargetKind.PLAYER_MAP_DISCOVERY:
             return [f"Slot {slot.value} is only legal for player_map_discovery targets."]
@@ -552,6 +555,8 @@ def _apply_player_map_discovery_set_value(state_root: StateRoot, mutation: Appro
         entry.is_name_revealed = bool(raw_value)
     elif slot is SlotKey.DISCOVERY_IS_VISITED:
         entry.is_visited = bool(raw_value)
+    elif slot is SlotKey.DISCOVERY_IS_MARKER_VISIBLE:
+        entry.is_marker_visible = bool(raw_value)
     else:
         raise ValueError(f"Unsupported player_map_discovery slot: {slot.value}.")
 

@@ -9,12 +9,12 @@ Compact plan for closing remaining Phase 2 exit criteria from [docs/02_canon/BUI
 - **Snapshot and restore (MVP):** `SnapshotRepository` + `snapshot_codec` provide full `StateRoot` round-trip. Save-slot metadata fields can store `snapshot_id` strings as `world_snapshot_ref` once orchestration writes them.
 - **Event storage:** `EventRepository` can persist `AuthoritativeEvent` tuples emitted from `process_proposed_change` and rules paths.
 - **Orchestration hook (done):** `src/persistence/orchestration.py` — `process_proposed_change_persisted`, `process_rules_action_persisted` append non-empty event tuples after successful applies; core remains SQLite-free.
-- **Map discovery (MVP pipeline):** `TargetKind.PLAYER_MAP_DISCOVERY` with boolean slots, `map_discovery_pipeline` runtime entry points, WORLD-category event handoffs; legacy helpers delegate to the pipeline.
+- **Map discovery (MVP pipeline):** `TargetKind.PLAYER_MAP_DISCOVERY` with boolean slots (reveal, name, visited, marker visible), `map_discovery_pipeline` runtime entry points, WORLD-category event handoffs; legacy helpers delegate to the pipeline.
 - **Save slot wiring (MVP done):** `save_slot_checkpoint_snapshot` writes `world_snapshot_ref` + `event_checkpoint_ref` (string of `max_seq`) and persists one self-consistent snapshot; `load_state_from_save_snapshot_ref` restores by slot ref.
 
 ## Remaining Work (Prioritized)
 
-1. **Map discovery extensions:** `is_marker_visible` and rumor/quest-driven reveals still out of scope; add narrow intents or contracts one at a time.
+1. **Map discovery extensions:** rumor/quest-driven reveals and multi-viewpoint discovery remain deferred; optional future slice: allow `False` for discovery boolean slots if canon requires undo/hide.
 
 2. **NPC importance tier names:** lock enum vocabulary in canon (`docs/02_canon/BUILD_ORDER.md` open question) before expanding tier semantics or voice routing that depends on tiers.
 

@@ -9,6 +9,7 @@ from src.world.map_discovery_pipeline import (
     mark_player_location_visited_through_runtime,
     reveal_player_location_name_through_runtime,
     reveal_player_location_through_runtime,
+    set_player_location_marker_visible_through_runtime,
 )
 from src.world.world_state import LocationRecord
 
@@ -43,6 +44,35 @@ class MapDiscoveryPipelineTests(unittest.TestCase):
 
         self.assertTrue(
             is_legal_slot_for_target(TargetKind.PLAYER_MAP_DISCOVERY, SlotKey.DISCOVERY_IS_REVEALED)
+        )
+        self.assertTrue(
+            is_legal_slot_for_target(
+                TargetKind.PLAYER_MAP_DISCOVERY, SlotKey.DISCOVERY_IS_MARKER_VISIBLE
+            )
+        )
+
+    def test_set_marker_visible_through_runtime(self) -> None:
+        loc = make_location_id("peak")
+        state = StateRoot(
+            locations={
+                str(loc): LocationRecord(
+                    location_id=loc,
+                    display_name="Peak",
+                    location_type="wilderness",
+                )
+            }
+        )
+        updated, events, _ = set_player_location_marker_visible_through_runtime(
+            state,
+            loc,
+            proposal_id="p_marker",
+            submitted_at="2026-05-12T15:00:00Z",
+        )
+        self.assertTrue(events)
+        self.assertTrue(updated.player_map_discovery[str(loc)].is_marker_visible)
+        self.assertEqual(
+            events[0].payload.get("intent_type"),
+            "map_discovery.set_marker_visible",
         )
 
     def test_visit_sets_all_three_flags(self) -> None:
